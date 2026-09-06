@@ -68,7 +68,7 @@
   }
   *{box-sizing:border-box;}
   body{margin:0;background:var(--bg);font-family:var(--font-body);}
-  #app{max-width:1180px;margin:0 auto;}
+  #app{width:100%;box-sizing:border-box;}
 
   /* ---- cabecera ---- */
   .console{
@@ -97,7 +97,7 @@
   .tabs button.active{color:#fff;background:var(--ink);}
   .tabs button:hover:not(.active){color:var(--ink);background:#fff;}
 
-  main.receipt-area{background:var(--canvas);color:var(--ink);padding:26px 26px 60px;min-height:70vh;}
+  main.receipt-area{background:var(--canvas);color:var(--ink);padding:26px 32px 60px;min-height:70vh;}
 
   h2.section-title{
     font-family:var(--font-display);font-size:23px;font-weight:800;letter-spacing:-.3px;color:var(--ink);
@@ -239,7 +239,7 @@
   .modal h3{font-family:var(--font-display);font-weight:800;margin-top:0;color:var(--ink);text-transform:none;}
   .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px;}
 
-table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;border-radius:var(--radius-sm);box-shadow:var(--shadow);display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;white-space:nowrap;}
+table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;border-radius:var(--radius-sm);box-shadow:var(--shadow);display:table;overflow-x:auto;-webkit-overflow-scrolling:touch;}
   th,td{padding:11px 12px;text-align:left;border-bottom:1px solid var(--line);}
   th{font-family:var(--font-body);font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-dim);background:var(--canvas);}
   tbody tr:hover{background:#FAF9FC;}
@@ -287,6 +287,8 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
   .model-check{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink);text-transform:none;letter-spacing:0;white-space:nowrap;}
   .model-check input{width:auto;}
 
+  #btn-abrir-caja:hover{opacity:0.85;}
+  #header-clock{font-variant-numeric:tabular-nums;}
   @media (max-width:900px){
     .charts-grid, .charts-grid-2{grid-template-columns:1fr;}
   }
@@ -294,19 +296,37 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
     .console{flex-direction:column;align-items:stretch;padding:12px 14px;gap:10px;}
     .console-left{justify-content:center;}
     .tabs{width:100%;justify-content:space-between;}
-    .tabs button{flex:1;justify-content:center;padding:9px 6px;font-size:12px;}
-    main.receipt-area{padding:16px 12px 50px;}
+    .tabs button{flex:1;justify-content:center;padding:9px 4px;font-size:11px;}
+    main.receipt-area{padding:12px 8px 60px;}
     .grid-cards{grid-template-columns:1fr;}
-    .kpis{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;}
-    .kpi{padding:13px 14px;}
-    .modal{padding:18px;max-width:100%;}
-    .field-row{gap:10px;}
-    .toolbar{gap:8px;}
-    button.btn{padding:10px 14px;}
-    h2.section-title{font-size:19px;}
-    .ticket{padding:14px;}
-    .scan-console{padding:13px 14px;}
-    input.scan-input{font-size:15px;letter-spacing:1px;padding:11px 12px;}
+    .kpis{grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;}
+    .kpi{padding:11px 12px;}
+    .modal{padding:14px;max-width:100%;margin:8px;}
+    .modal-actions{flex-wrap:wrap;gap:8px;}
+    .modal-actions .btn{flex:1;min-width:120px;text-align:center;}
+    .field-row{flex-direction:column;gap:8px;}
+    .field-row .field{min-width:0;width:100%;}
+    .toolbar{gap:6px;flex-wrap:wrap;}
+    .toolbar select,.toolbar input[type="text"],.toolbar input[type="date"]{width:100%;min-width:0;}
+    button.btn{padding:10px 12px;font-size:13px;}
+    button.btn.small{padding:7px 10px;font-size:12px;}
+    h2.section-title{font-size:18px;}
+    .ticket{padding:12px;}
+    .scan-console{padding:12px 10px;}
+    input.scan-input{font-size:15px;letter-spacing:1px;padding:10px 10px;}
+    .ticket-actions{flex-wrap:wrap;gap:6px;}
+    .ticket-actions .btn{flex:1;min-width:100px;text-align:center;justify-content:center;}
+    .price-row{flex-wrap:wrap;gap:8px;font-size:12px;}
+    table{font-size:12px;}
+    th,td{padding:7px 6px;}
+    .sub-title{font-size:14px;}
+    .product-photo{height:140px;}
+  }
+  @media (max-width:400px){
+    .tabs button{font-size:10px;padding:8px 2px;}
+    main.receipt-area{padding:10px 6px 60px;}
+    .modal{padding:12px;margin:4px;}
+    button.btn{padding:9px 10px;font-size:12px;}
   }
 </style>
 </head>
@@ -320,11 +340,19 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
         <div id="appVersionTag" style="font-size:10px;color:var(--ink-dim);font-weight:600;"></div>
       </div>
     </div>
-    <nav class="tabs">
-      <button data-tab="almacen">📦 Almacén</button>
-      <button data-tab="ventas">🛒 Ventas</button>
-      <button data-tab="informes">📊 Informes</button>
-    </nav>
+    <div style="display:flex;align-items:center;gap:14px;flex:1;justify-content:center;">
+      <div id="header-clock" style="font-size:15px;font-weight:700;color:var(--ink);letter-spacing:0.5px;white-space:nowrap;"></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <button id="btn-abrir-caja" onclick="abrirCajon()" style="background:var(--teal);border:none;color:#fff;border-radius:var(--radius-sm);padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;">
+        💵 Abrir caja
+      </button>
+      <nav class="tabs">
+        <button data-tab="almacen">📦 Almacén</button>
+        <button data-tab="ventas">🛒 Ventas</button>
+        <button data-tab="informes">📊 Informes</button>
+      </nav>
+    </div>
   </header>
   <main id="view" class="receipt-area"></main>
 </div>
@@ -332,7 +360,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <div id="toast" class="toast"></div>
 
 <script>
-const APP_VERSION = "2.2";
+const APP_VERSION = "3.5";
 const STORAGE_KEY = "zapateria-data-v2";
 let state = null;
 let currentTab = "almacen";
@@ -618,20 +646,31 @@ function showToast(msg, type){
 let lastRenderedTab = null;
 
 function renderSinScroll(){
-  // Estrategia: actualizar solo los checkboxes en el DOM actual sin re-renderizar la página completa.
-  // Esto evita completamente el salto de scroll.
+  // Para los checkboxes de modelos en Informes: actualizar solo el DOM sin re-render completo
   const modelChecks = document.querySelectorAll('[data-modelkey]');
   const sel = getSelectedModelKeys();
   if(modelChecks.length > 0){
-    modelChecks.forEach(cb=>{
-      cb.checked = sel.includes(cb.dataset.modelkey);
-    });
-    // Redibujar solo las gráficas que dependen de la selección
+    modelChecks.forEach(cb=>{ cb.checked = sel.includes(cb.dataset.modelkey); });
     try{ initCharts(); }catch(e){}
     return;
   }
-  // Fallback: re-render normal si los checkboxes aún no existen en el DOM
   render();
+}
+
+// Hace un render completo pero preserva la posición de scroll de la página.
+// Usar cuando se modifican datos (marcar pendiente, completar, etc.) y no queremos
+// que el usuario pierda su posición en la lista.
+function renderPreservandoScroll(){
+  var scrollY = 0;
+  try{ scrollY = window.pageYOffset || (document.documentElement && document.documentElement.scrollTop) || (document.body && document.body.scrollTop) || 0; }catch(e){}
+  render();
+  setTimeout(function(){
+    try{
+      if(window.scrollTo) window.scrollTo(0, scrollY);
+      if(document.documentElement) document.documentElement.scrollTop = scrollY;
+      if(document.body) document.body.scrollTop = scrollY;
+    }catch(e){}
+  }, 0);
 }
 
 function render(){
@@ -881,12 +920,12 @@ function renderVentas(){
     const lineas = preFiltered.filter(s=>s.ticketId===tid);
     const t = state.tickets.find(x=>x.id===tid);
     ticketMap[tid] = { lineas, ticket:t,
-      fecha: lineas[0]?.fecha || '',
-      numero: t?.numero || 0,
+      fecha: (lineas[0] ? lineas[0].fecha : '') || '',
+      numero: (t ? t.numero : 0) || 0,
       total: lineas.reduce((a,s)=>a+s.total,0),
       beneficio: lineas.reduce((a,s)=>a+s.beneficio,0),
-      marca: lineas[0]?.marca || '',
-      modelo: lineas[0]?.modelo || ''
+      marca: (lineas[0] ? lineas[0].marca : '') || '',
+      modelo: (lineas[0] ? lineas[0].modelo : '') || ''
     };
   });
 
@@ -944,10 +983,13 @@ function renderVentas(){
       <td class="num">${eur(s.beneficio)}</td>
       <td>${badgePago}</td>
       <td>${badgeDev}</td>
-      <td>
-        ${estadoPago==='completada' && ticket ? `<button class="btn small" style="background:var(--gold);border-color:var(--gold);color:#3a2c00;" onclick="openPendienteModal('${ticket.id}')">⏳ Pend.</button>` : ""}
-        ${puedeDevolver? `<button class="btn small secondary" onclick="openDevolucionModal('${s.id}')">↩️ Dev.</button>` : ""}
-        ${ticket && !state.devoluciones.some(d=>d.ticketId===ticket.id) ? `<button class="btn small danger" onclick="eliminarTicket('${ticket.id}')">🗑️</button>` : ""}
+      <td style="white-space:nowrap;min-width:110px;">
+        <div style="display:flex;gap:4px;align-items:center;">
+          ${estadoPago==='completada' && ticket ? `<button class="btn small" style="background:var(--gold);border-color:var(--gold);color:#3a2c00;" onclick="openPendienteModal('${ticket.id}')" title="Marcar como pendiente">⏳</button>` : ""}
+          ${estadoPago==='pendiente' && ticket ? `<button class="btn small" style="background:var(--gold);border-color:var(--gold);color:#3a2c00;" onclick="openPendienteModal('${ticket.id}')" title="Ver / editar pendiente">⏳</button>` : ""}
+          ${puedeDevolver? `<button class="btn small secondary" onclick="openDevolucionModal('${s.id}')" title="Registrar devolución">↩️</button>` : ""}
+          ${ticket ? `<button class="btn small danger" onclick="eliminarTicket('${ticket.id}')" title="Eliminar ticket">🗑️ Eliminar</button>` : ""}
+        </div>
       </td>
     </tr>`);
   });
@@ -1062,14 +1104,18 @@ function renderVentas(){
         <label style="margin:0;">Hasta <input type="date" value="${historyTo||''}" onchange="historyTo=this.value;render()" style="margin-left:4px;"></label>
       ` : ""}
       ${state.tickets.length>0 ? `<button class="btn small danger" onclick="cancelarUltimaVenta()" title="Cancela y elimina la última venta registrada, reponiendo el stock">⚡ Cancelar última venta</button>` : ""}
+      ${state.sales.length>0 ? `<button class="btn small secondary" onclick="exportLedgerCSV()">📥 CSV</button>` : ""}
+      ${state.sales.length>0 ? `<button class="btn small secondary" onclick="exportLedgerJSON()">📥 JSON</button>` : ""}
     </div>
     <div class="price-row" style="margin-bottom:10px;">
       <span>Ventas en el filtro: <b>${filtered.length}</b></span>
       <span>Total: <b>${eur(filteredTotal)}</b></span>
       <span>Beneficio: <b>${eur(filteredBeneficio)}</b></span>
     </div>
-    <table>
-      <thead><tr>
+    <div style="max-height:520px;overflow-y:auto;border-radius:var(--radius-sm);box-shadow:var(--shadow);">
+    <table style="box-shadow:none;border-radius:0;font-size:14.5px;">
+      <thead style="position:sticky;top:0;z-index:2;">
+      <tr>
         ${[
           ['ticket','🔢 Nº'],
           ['fecha','📅 Fecha'],
@@ -1093,11 +1139,14 @@ function renderVentas(){
           const icono = activo ? (esAsc ? '▲' : '▼') : '⇅';
           return `<th class="num sortable${activo?' sort-active':''}" onclick="sortHistoryBy('${campo}')">${label} <span class="sort-icon">${icono}</span></th>`;
         }).join('')}
-        <th>Pago</th><th>Dev.</th><th></th>
-      </tr></thead>
+        <th>Pago</th><th>Dev.</th><th style="min-width:110px;"></th>
+      </tr>
+      </thead>
       <tbody>${rowsHist}</tbody>
     </table>
-    ${filtered.length>200? `<div class="note" style="margin-top:10px;">Mostrando las 200 ventas más recientes del filtro. Afina la búsqueda o el rango de fechas para ver el resto.</div>`:""}
+    </div>
+    <div style="font-size:12.5px;color:var(--ink-dim);margin-top:6px;">${filtered.length} línea(s) · ${[...new Set(filtered.map(s=>s.ticketId))].length} ticket(s)</div>
+    ${filtered.length>200? `<div class="note" style="margin-top:6px;">Mostrando las 200 ventas más recientes. Afina la búsqueda o el periodo para ver el resto.</div>`:""}
 
     <h2 class="section-title" style="margin-top:30px;">Devoluciones y garantías</h2>
     <div class="note">
@@ -1112,10 +1161,11 @@ function renderVentas(){
       <span>Garantías: <b>${eur(state.devoluciones.filter(d=>d.motivo==='garantia').reduce((a,d)=>a+d.importe,0))}</b></span>
     </div>
     <div class="toolbar">
-      <button class="btn secondary" onclick="exportDevolucionesCSV()">Exportar devoluciones (CSV)</button>
+      <button class="btn secondary" onclick="exportDevolucionesCSV()">📥 CSV devoluciones</button>
     </div>
-    <table>
-      <thead><tr><th>Nº</th><th>Fecha</th><th>Marca</th><th>Modelo</th><th class="num">Talla</th><th class="num">Cant.</th><th>Motivo</th><th class="num">Importe</th><th>Repuesto en stock</th></tr></thead>
+    <div style="max-height:400px;overflow-y:auto;border-radius:var(--radius-sm);box-shadow:var(--shadow);">
+    <table style="box-shadow:none;border-radius:0;font-size:14.5px;">
+      <thead style="position:sticky;top:0;z-index:2;"><tr><th>Nº</th><th>Fecha</th><th>Marca</th><th>Modelo</th><th class="num">Talla</th><th class="num">Cant.</th><th>Motivo</th><th class="num">Importe</th><th>Repuesto en stock</th></tr></thead>
       <tbody>
         ${[...state.devoluciones].sort((a,b)=>b.fecha.localeCompare(a.fecha)).map(d=>`
           <tr>
@@ -1132,6 +1182,7 @@ function renderVentas(){
         `).join("")}
       </tbody>
     </table>
+    </div>
     ` : `<div class="empty-state">Aún no se ha registrado ninguna devolución ni garantía.</div>`}
   `;
 }
@@ -1276,36 +1327,6 @@ function renderInformes(){
       </div>
     </div>
     ` : `<div class="empty-state">Aún no hay ventas registradas. Los gráficos aparecerán en cuanto registres la primera venta.</div>`}
-
-    <h3 class="sub-title">Facturación — registro de ventas</h3>
-    <div class="note">
-      Registro numerado de todas las ventas. Puedes filtrar por periodo, reimprimir cualquier ticket o eliminarlo si fue un error.
-    </div>
-    
-    ${ticketsFiltrados.length? `
-    <div class="toolbar">
-      <button class="btn secondary" onclick="exportLedgerJSON()">Exportar registro (JSON)</button>
-      <button class="btn secondary" onclick="exportLedgerCSV()">Exportar registro (CSV)</button>
-    </div>
-    <table>
-      <thead><tr><th>Serie/Nº</th><th>Fecha</th><th class="num">Total</th><th>Descuento</th><th>Pago</th><th></th></tr></thead>
-      <tbody>
-        ${[...ticketsFiltrados].sort((a,b)=>b.fecha.localeCompare(a.fecha)).slice(0,60).map(t=>`
-          <tr>
-            <td>${t.numSerieFactura}</td>
-            <td>${new Date(t.fecha).toLocaleString('es-ES')}</td>
-            <td class="num">${eur(t.total)}</td>
-            <td>${t.descuento? `-${eur(t.descuento.importe)}` : ""}</td>
-            <td><span class="${(t.estadoPago||'completada')==='pendiente'?'estado-pendiente':'estado-completada'}">${(t.estadoPago||'completada')==='pendiente'?'⏳ Pendiente':'✅ Completada'}</span></td>
-            <td>
-              <button class="btn small secondary" onclick="abrirTicketImprimible('${t.id}')">🖨️ Ticket</button>
-              <button class="btn small danger" onclick="eliminarTicket('${t.id}')">🗑️ Eliminar</button>
-            </td>
-          </tr>
-        `).join("")}
-      </tbody>
-    </table>
-    ` : `<div class="empty-state">${state.tickets.length? 'Ningún ticket en el periodo seleccionado.' : 'Aún no se ha registrado ningún ticket.'}</div>`}
 
     <h3 class="sub-title">Exportar informe a PDF</h3>
     <div class="ticket" style="max-width:560px;">
@@ -1748,7 +1769,7 @@ function guardarPendiente(ticketId){
   };
   saveState();
   closeModal();
-  render();
+  renderPreservandoScroll();
   showToast(`Venta marcada como pendiente ✓`, "ok");
 }
 
@@ -1758,7 +1779,7 @@ function marcarCompletada(ticketId){
   t.estadoPago = 'completada';
   saveState();
   closeModal();
-  render();
+  renderPreservandoScroll();
   showToast(`Venta marcada como completada ✓`, "ok");
 }
 
@@ -1766,29 +1787,19 @@ function eliminarTicket(ticketId){
   const t = state.tickets.find(x=>x.id===ticketId);
   if(!t) return;
   const lineas = state.sales.filter(s=>s.ticketId===ticketId);
-  const tieneDevoluciones = state.devoluciones.some(d=>d.ticketId===ticketId);
+  const devs = state.devoluciones.filter(d=>d.ticketId===ticketId);
+  const tieneDevs = devs.length > 0;
 
-  if(tieneDevoluciones){
-    document.getElementById("modal-root").innerHTML = `
-      <div class="modal-overlay" onclick="if(event.target===this) closeModal()">
-        <div class="modal" style="max-width:380px;">
-          <h3>⚠️ No se puede eliminar</h3>
-          <p>Este ticket tiene devoluciones o garantías registradas. Para no perder ese rastro no se puede borrar directamente.</p>
-          <div class="modal-actions" style="justify-content:center;">
-            <button class="btn accent" onclick="closeModal()">Entendido</button>
-          </div>
-        </div>
-      </div>`;
-    return;
-  }
+  const aviso = tieneDevs
+    ? `<p style="color:var(--red);font-size:13px;">⚠️ Este ticket tiene <b>${devs.length} devolución(es)</b> registrada(s). Al eliminarlo también se borrarán esas devoluciones.</p>`
+    : `<p style="color:var(--ink-dim);font-size:13px;">Se repondrá el stock de ${lineas.length} artículo(s). Esta acción no se puede deshacer.</p>`;
 
-  // Usar modal propio en vez de confirm() — confirm() puede bloquearse en PWA Android
   document.getElementById("modal-root").innerHTML = `
     <div class="modal-overlay">
-      <div class="modal" style="max-width:380px;">
+      <div class="modal" style="max-width:400px;">
         <h3>🗑️ Eliminar ticket</h3>
         <p>¿Eliminar el ticket <b>${t.numSerieFactura}</b> por <b>${eur(t.total)}</b>?</p>
-        <p style="color:var(--ink-dim);font-size:13px;">Se repondrá el stock de ${lineas.length} artículo(s). Esta acción no se puede deshacer.</p>
+        ${aviso}
         <div class="modal-actions" style="justify-content:center;gap:12px;">
           <button class="btn secondary" onclick="closeModal()">Cancelar</button>
           <button class="btn danger" onclick="confirmarEliminarTicket('${ticketId}')">🗑️ Sí, eliminar</button>
@@ -1799,7 +1810,9 @@ function eliminarTicket(ticketId){
 
 function confirmarEliminarTicket(ticketId){
   const lineas = state.sales.filter(s=>s.ticketId===ticketId);
+  // Reponer stock de los artículos del catálogo
   lineas.forEach(s=>{
+    if(s.productId==='__manual__') return;
     const p = state.products.find(x=>x.id===s.productId);
     if(p){
       const info = tallaInfo(p, s.talla);
@@ -1807,11 +1820,13 @@ function confirmarEliminarTicket(ticketId){
       p.tallas[s.talla].stock = (info.stock||0) + s.cantidad;
     }
   });
+  // Borrar ventas, devoluciones y ticket
   state.sales = state.sales.filter(s=>s.ticketId!==ticketId);
+  state.devoluciones = state.devoluciones.filter(d=>d.ticketId!==ticketId);
   state.tickets = state.tickets.filter(x=>x.id!==ticketId);
   saveState();
   closeModal();
-  render();
+  renderPreservandoScroll();
   showToast("Ticket eliminado y stock repuesto ✓", "ok");
 }
 
@@ -1927,7 +1942,7 @@ function exportarPDF(){
   const totalGar = devsPdf.filter(d=>d.motivo==='garantia').reduce((a,d)=>a+d.importe, 0);
   const ventasNetas = totalVentas - totalDev - totalGar;
   const ticketsMedio = ticketsPdf.length ? totalVentas/ticketsPdf.length : 0;
-  const periodoLabel = PERIODOS_PDF.find(p=>p.value===pdfPeriodo)?.label || pdfPeriodo;
+  const periodoLabel = (PERIODOS_PDF.find(p=>p.value===pdfPeriodo) || {label:pdfPeriodo}).label;
   const rango = pdfPeriodo==='personalizado' ? ` (${pdfFrom||'…'} — ${pdfTo||'…'})` : '';
   const nombreTienda = state.settings.nombreTienda || 'Mi Zapatería';
   const nif = state.settings.nif || '';
@@ -2717,11 +2732,11 @@ function handleScanVenta(code){
 }
 
 function addOtroToCart(){
-  const nombre = (document.getElementById('otro-nombre')?.value || otroNombre).trim();
-  const modelo = (document.getElementById('otro-modelo')?.value || otroModelo).trim();
-  const talla  = (document.getElementById('otro-talla')?.value  || otroTalla).trim();
-  const precio = parseFloat(document.getElementById('otro-precio')?.value || otroPrecio);
-  const cantidad = parseInt(document.getElementById('otro-cantidad')?.value || otroCantidad) || 1;
+  const nombre = ((document.getElementById('otro-nombre')||{}).value || otroNombre).trim();
+  const modelo = ((document.getElementById('otro-modelo')||{}).value || otroModelo).trim();
+  const talla  = ((document.getElementById('otro-talla')||{}).value  || otroTalla).trim();
+  const precio = parseFloat((document.getElementById('otro-precio')||{}).value || otroPrecio);
+  const cantidad = parseInt((document.getElementById('otro-cantidad')||{}).value || otroCantidad) || 1;
   if(!nombre){ showToast("El nombre del artículo es obligatorio.", "err"); return; }
   if(!precio || precio<=0){ showToast("El precio debe ser mayor que cero.", "err"); return; }
   cart.push({
@@ -2878,7 +2893,7 @@ function computeLinesConDescuento(lines, descuento){
         cantidad:r.line.cantidad, subtotal, iva, total, beneficio:subtotal, // beneficio desconocido, igual al subtotal
         precioOriginalUnit: r.baseConPromo, promoTipo:null, promoValor:null, precioTrasPromoUnit:r.baseConPromo,
         descManualActivo: !!(dl && dl.activo && dl.valor>0),
-        descManualTipo: dl?.tipo||null, descManualValor: dl?.valor||null,
+        descManualTipo: (dl ? dl.tipo : null)||null, descManualValor: (dl ? dl.valor : null)||null,
         descManualImporte: r.descuentoLineaImporte,
         descuentoPuntualLinea: descuentoFacturaPorLinea[i],
         esManual: true
@@ -3157,7 +3172,7 @@ async function doSeedDemoData(){
 }
 
 // ---------------- utils ----------------
-function escapeHtml(s){ return String(s??"").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function escapeHtml(s){ return String(s==null?"":s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 function escapeAttr(s){ return escapeHtml(s); }
 
 document.querySelectorAll(".tabs button").forEach(btn=>{
@@ -3166,15 +3181,67 @@ document.querySelectorAll(".tabs button").forEach(btn=>{
 
 loadState();
 
-// Registrar el Service Worker para que Android reconozca la app como instalable
-// y para que funcione sin conexión a internet.
-if('serviceWorker' in navigator){
-  window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('./sw.js')
-      .then(reg => console.log('Service Worker registrado:', reg.scope))
-      .catch(err => console.log('Service Worker error:', err));
+// Reloj en tiempo real en la cabecera
+function actualizarReloj(){
+  const el = document.getElementById('header-clock');
+  if(!el) return;
+  const ahora = new Date();
+  const fecha = ahora.toLocaleDateString('es-ES', {weekday:'short', day:'2-digit', month:'short'});
+  const hora  = ahora.toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  el.textContent = fecha + ' · ' + hora;
+}
+actualizarReloj();
+setInterval(actualizarReloj, 1000);
+
+// Registrar el Service Worker — con manejo de errores robusto para dispositivos
+// como Kozen donde el SW puede no estar disponible (protocolo file://, WebView restringido, etc.)
+if('serviceWorker' in navigator && location.protocol !== 'file:'){
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('./sw.js').then(function(reg) {
+      reg.update();
+
+      // Escuchar mensajes del SW (nueva versión instalada)
+      navigator.serviceWorker.addEventListener('message', function(event) {
+        if(event.data && event.data.tipo === 'nueva-version'){
+          var banner = document.getElementById('update-banner');
+          if(!banner){
+            banner = document.createElement('div');
+            banner.id = 'update-banner';
+            banner.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#FF5A3C;color:#fff;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;z-index:9998;font-size:14px;font-weight:600;box-shadow:0 -2px 12px rgba(0,0,0,.2);';
+            banner.innerHTML = '<span>🆕 Nueva versión disponible (v'+event.data.version+')</span><button onclick="window.location.reload()" style="background:#fff;color:#FF5A3C;border:none;padding:8px 18px;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px;">Actualizar ahora</button>';
+            document.body.appendChild(banner);
+          }
+        }
+      });
+
+      reg.addEventListener('updatefound', function(){
+        var nuevoSW = reg.installing;
+        nuevoSW.addEventListener('statechange', function(){
+          if(nuevoSW.state === 'installed' && navigator.serviceWorker.controller){
+            nuevoSW.postMessage('skipWaiting');
+          }
+        });
+      });
+
+    }).catch(function(err){ console.log('SW no disponible:', err); });
   });
 }
+
+// Capturar errores JavaScript no manejados para mostrar un mensaje útil en lugar de pantalla en blanco
+window.onerror = function(msg, src, line, col, err){
+  const ya = document.getElementById('fatal-error');
+  if(ya) return;
+  const div = document.createElement('div');
+  div.id = 'fatal-error';
+  div.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#fff;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;font-family:sans-serif;text-align:center;';
+  div.innerHTML = '<div style="font-size:48px;margin-bottom:16px;">⚠️</div>'
+    + '<h2 style="color:#E53E3E;margin-bottom:8px;">Error al cargar la app</h2>'
+    + '<p style="color:#555;margin-bottom:20px;">' + (msg||'Error desconocido') + '</p>'
+    + '<button onclick="location.reload()" style="background:#FF5A3C;color:#fff;border:none;padding:12px 24px;border-radius:8px;font-size:16px;cursor:pointer;">🔄 Reintentar</button>'
+    + '<p style="color:#999;font-size:12px;margin-top:16px;">Línea ' + line + ' · ' + (src||'') + '</p>';
+  document.body.appendChild(div);
+  return false;
+};
 </script>
 </body>
 </html>
