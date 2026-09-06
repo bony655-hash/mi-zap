@@ -342,6 +342,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
     </div>
     <div style="display:flex;align-items:center;gap:14px;flex:1;justify-content:center;">
       <div id="header-clock" style="font-size:15px;font-weight:700;color:var(--ink);letter-spacing:0.5px;white-space:nowrap;"></div>
+      <span id="sync-status" style="font-size:16px;cursor:default;" title="Estado de sincronización">☁️</span>
     </div>
     <div style="display:flex;align-items:center;gap:10px;">
       <button id="btn-abrir-caja" onclick="abrirCajon()" style="background:var(--teal);border:none;color:#fff;border-radius:var(--radius-sm);padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;">
@@ -359,9 +360,100 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <div id="modal-root"></div>
 <div id="toast" class="toast"></div>
 
+<!-- Firebase SDK (compat, funciona como script tag normal) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "3.6";
+const APP_VERSION = "4.4";
 const STORAGE_KEY = "zapateria-data-v2";
+
+// ---- FIREBASE: sincronización entre dispositivos ----
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyB7RiGRQLEILzqGj_Bi2T65DTvn_uv4njs",
+  authDomain: "mi-zap.firebaseapp.com",
+  projectId: "mi-zap",
+  storageBucket: "mi-zap.firebasestorage.app",
+  messagingSenderId: "1049246581162",
+  appId: "1:1049246581162:web:da09671b042c3c42402bd3"
+};
+
+var fbApp = null;
+var fbDb  = null;
+var fbRef = null;
+var fbEscuchando = false;
+var _guardandoEnFb = false; // evita bucle: guardar→onSnapshot→guardar
+
+function iniciarFirebase(){
+  try{
+    if(typeof firebase === 'undefined') return;
+    fbApp = firebase.initializeApp(FIREBASE_CONFIG);
+    fbDb  = firebase.firestore();
+    fbRef = fbDb.collection('zapateria').doc('estado');
+    // Persistencia offline: Firebase funciona sin internet y sincroniza al reconectar
+    fbDb.enablePersistence({synchronizeTabs:true}).catch(function(err){
+      console.log('Firebase offline persistence:', err.code);
+    });
+    console.log('Firebase iniciado ✓');
+  }catch(e){ console.error('Error iniciando Firebase:', e); }
+}
+
+// Guarda en Firebase todo el estado EXCEPTO las fotos (pueden exceder el límite de 1MB)
+// Las fotos se guardan solo en localStorage de cada dispositivo.
+function guardarEnFirebase(){
+  if(!fbRef || _guardandoEnFb) return;
+  try{
+    var sinFotos = JSON.parse(JSON.stringify(state));
+    sinFotos.products.forEach(function(p){ delete p.foto; });
+    _guardandoEnFb = true;
+    fbRef.set(sinFotos).then(function(){
+      _guardandoEnFb = false;
+      mostrarEstadoSync('ok');
+    }).catch(function(err){
+      _guardandoEnFb = false;
+      console.error('Error guardando en Firebase:', err);
+      mostrarEstadoSync('err');
+    });
+  }catch(e){ _guardandoEnFb = false; console.error(e); }
+}
+
+// Escucha cambios en Firebase y actualiza la app en todos los dispositivos
+function iniciarEscuchaFirebase(){
+  if(!fbRef || fbEscuchando) return;
+  fbEscuchando = true;
+  fbRef.onSnapshot(function(doc){
+    if(_guardandoEnFb) return; // ignorar el eco de nuestro propio guardado
+    if(!doc.exists) return;
+    try{
+      var remoto = doc.data();
+      if(!remoto || !Array.isArray(remoto.products)) return;
+      // Conservar las fotos locales (no están en Firebase)
+      var fotosLocales = {};
+      if(state && state.products) state.products.forEach(function(p){ if(p.foto) fotosLocales[p.id]=p.foto; });
+      state = remoto;
+      state.products.forEach(function(p){ if(fotosLocales[p.id]) p.foto=fotosLocales[p.id]; });
+      // Migración de campos que puedan faltar
+      if(!state.tickets) state.tickets=[];
+      if(!state.devoluciones) state.devoluciones=[];
+      state.tickets.forEach(function(t){ if(!t.estadoPago) t.estadoPago='completada'; if(t.datosCliente===undefined) t.datosCliente=null; });
+      // Guardar en localStorage (copia local con fotos)
+      storage.set(STORAGE_KEY, JSON.stringify(state));
+      // Actualizar UI
+      document.getElementById("storeName").textContent = (state.settings.nombreTienda||"Mi Zapatería").toUpperCase();
+      render();
+      mostrarEstadoSync('sync');
+    }catch(e){ console.error('Error procesando datos de Firebase:', e); }
+  }, function(err){ console.error('Error en listener Firebase:', err); mostrarEstadoSync('err'); });
+}
+
+function mostrarEstadoSync(tipo){
+  var el = document.getElementById('sync-status');
+  if(!el) return;
+  if(tipo==='ok')   { el.textContent='☁️'; el.title='Guardado en la nube ✓'; el.style.color='var(--teal)'; }
+  if(tipo==='sync') { el.textContent='🔄'; el.title='Datos sincronizados';     el.style.color='var(--teal)'; }
+  if(tipo==='err')  { el.textContent='⚠️'; el.title='Sin conexión — datos guardados localmente'; el.style.color='var(--gold)'; }
+}
+
+
 let state = null;
 let currentTab = "almacen";
 let filterText = "";
@@ -391,6 +483,7 @@ let cartDescuentoValor = 0;
 
 let ventasTab = "catalogo"; // 'catalogo' | 'otro'
 let otroNombre = ""; let otroModelo = ""; let otroTalla = ""; let otroPrecio = ""; let otroCantidad = 1;
+var _scrollGuardado = 0; // scroll guardado ANTES de abrir un modal, para restaurarlo después
 let cartMetodoPago = "efectivo";
 let chartRefs = { monthly:null, top:null, brand:null };
 const PALETTE = ['#FFB020','#3ED07A','#5B8DEF','#E85D75','#B98CE0','#8A93A3','#F2A65A','#43BFB0'];
@@ -443,11 +536,27 @@ const storage = {
 };
 
 async function loadState(){
+  // Cargar primero desde localStorage (inmediato, con fotos)
   try{
     const res = storage.get(STORAGE_KEY);
     state = res && res.value ? JSON.parse(res.value) : defaultState();
-  }catch(e){
-    state = defaultState();
+  }catch(e){ state = defaultState(); }
+
+  // Si Firebase está disponible, intentar cargar datos más recientes de la nube
+  if(fbRef){
+    try{
+      var snap = await fbRef.get();
+      if(snap.exists){
+        var remoto = snap.data();
+        if(remoto && Array.isArray(remoto.products)){
+          // Conservar fotos locales (no están en Firebase)
+          var fotosLocales = {};
+          if(state && state.products) state.products.forEach(function(p){ if(p.foto) fotosLocales[p.id]=p.foto; });
+          state = remoto;
+          state.products.forEach(function(p){ if(fotosLocales[p.id]) p.foto=fotosLocales[p.id]; });
+        }
+      }
+    }catch(e){ console.log('Firebase no disponible al arrancar, usando datos locales:', e.message); }
   }
   if(!state.settings) state.settings = defaultState().settings;
   if(state.settings.nif===undefined) state.settings.nif="";
@@ -478,8 +587,11 @@ async function loadState(){
 }
 
 function saveState(){
+  // Guardar siempre en localStorage (con fotos, funciona offline)
   const ok = storage.set(STORAGE_KEY, JSON.stringify(state));
-  if(!ok) showToast("⚠️ No se pudo guardar. Puede que el almacenamiento esté lleno. Descarga una copia de seguridad.", "err");
+  if(!ok) showToast("⚠️ No se pudo guardar localmente.", "err");
+  // Guardar en Firebase (sin fotos, para sincronizar entre dispositivos)
+  guardarEnFirebase();
 }
 
 function startOfWeek(d){
@@ -728,7 +840,12 @@ function renderAlmacen(){
     }).join("");
     const base = precioBaseConPromo(p);
     const conIva = precioConIVA(base);
-    const promoBadge = (p.promo && p.promo.activo) ? `<span class="promo-badge">PROMO -${p.promo.tipo==='porcentaje'?p.promo.valor+'%':eur(p.promo.valor)}</span>` : "";
+    const precioOriginal = precioConIVA(p.precioVenta);
+    const tienePromo = p.promo && p.promo.activo;
+    const promoBadge = tienePromo ? `<span class="promo-badge">PROMO -${p.promo.tipo==='porcentaje'?p.promo.valor+'%':eur(p.promo.valor)}</span>` : "";
+    const pvpDisplay = tienePromo
+      ? `<b><s style="color:var(--ink-dim);font-weight:400;">${eur(precioOriginal)}</s> ${eur(conIva)}</b>`
+      : `<b>${eur(conIva)}</b>`;
     return `
     <div class="ticket">
       ${p.foto? `<div class="product-photo" style="background-image:url('${p.foto}')"></div>` : ""}
@@ -745,9 +862,9 @@ function renderAlmacen(){
       </div>
       <div class="price-row">
         <span>Compra: <b>${eur(p.precioCompra)}</b></span>
-        <span>Venta (sin IVA): <b>${eur(base)}</b>${promoBadge}</span>
-        <span>PVP con IVA: <b>${eur(conIva)}</b></span>
-        <span>Margen: <b>${pct(margen(p))}</b></span>
+        <span>Venta (sin IVA): <b>${eur(p.precioVenta)}</b>${tienePromo ? ` → <b style="color:var(--teal);">${eur(base)}</b>` : ""}</span>
+        <span>PVP con IVA: ${pvpDisplay} ${promoBadge}</span>
+        <span>Margen: <b>${pct(margen(p))}</b> · <b style="color:var(--teal);">${eur(p.precioVenta - p.precioCompra)}</b></span>
       </div>
       <div class="studs">${sizes}</div>
       <div style="font-size:12px;color:var(--ink-dim);">Stock total: <b>${stockTotal(p)}</b> pares</div>
@@ -954,6 +1071,7 @@ function renderVentas(){
   const filteredBeneficio = filtered.reduce((a,s)=>a+s.beneficio,0);
   let prevTicketId = null;
   let grupoToggle = false;
+  const ticketsYaMostrados = new Set();
   const rowsHistArr = [];
   filtered.slice(0,200).forEach(s=>{
     if(prevTicketId!==null && s.ticketId!==prevTicketId){
@@ -961,6 +1079,8 @@ function renderVentas(){
       rowsHistArr.push(`<tr class="ticket-spacer"><td colspan="11"></td></tr>`);
     }
     prevTicketId = s.ticketId;
+    const esPrimeraLineaTicket = !ticketsYaMostrados.has(s.ticketId);
+    ticketsYaMostrados.add(s.ticketId);
     const estadoDev = estadoDevolucion(s);
     const badgeDev = estadoDev==='total' ? `<span class="dev-badge dev-total">Devuelta</span>`
                   : estadoDev==='parcial' ? `<span class="dev-badge dev-parcial">Parcial</span>`
@@ -972,7 +1092,7 @@ function renderVentas(){
       ? `<button class="estado-pendiente" onclick="openPendienteModal('${ticket.id}')" title="${ticket.datosCliente&&ticket.datosCliente.nombre ? '👤 '+ticket.datosCliente.nombre : 'Sin datos de cliente'}">⏳ Pendiente${ticket.datosCliente&&ticket.datosCliente.nombre?' — '+escapeHtml(ticket.datosCliente.nombre):''}</button>`
       : `<span class="estado-completada">✅ Completada</span>`;
     rowsHistArr.push(`
-    <tr class="${grupoToggle? 'ticket-row-b':'ticket-row-a'}">
+    <tr class="${grupoToggle? 'ticket-row-b':'ticket-row-a'}" data-ticketid="${s.ticketId}">
       <td>${ticket? ticket.numSerieFactura : "—"}</td>
       <td>${new Date(s.fecha).toLocaleString('es-ES')}</td>
       <td>${escapeHtml(s.marca)}</td>
@@ -981,14 +1101,15 @@ function renderVentas(){
       <td class="num">${s.cantidad}</td>
       <td class="num">${eur(s.total)}</td>
       <td class="num">${eur(s.beneficio)}</td>
-      <td>${badgePago}</td>
+      <td>${esPrimeraLineaTicket ? badgePago : ''}</td>
       <td>${badgeDev}</td>
-      <td style="white-space:nowrap;min-width:110px;">
-        <div style="display:flex;gap:4px;align-items:center;">
-          ${estadoPago==='completada' && ticket ? `<button class="btn small" style="background:var(--gold);border-color:var(--gold);color:#3a2c00;" onclick="openPendienteModal('${ticket.id}')" title="Marcar como pendiente">⏳</button>` : ""}
-          ${estadoPago==='pendiente' && ticket ? `<button class="btn small" style="background:var(--gold);border-color:var(--gold);color:#3a2c00;" onclick="openPendienteModal('${ticket.id}')" title="Ver / editar pendiente">⏳</button>` : ""}
+      <td style="white-space:nowrap;min-width:140px;">
+        <div style="display:flex;gap:4px;align-items:center;flex-wrap:nowrap;">
+          ${esPrimeraLineaTicket && ticket ? `<button class="btn small secondary" onclick="abrirTicketImprimible('${ticket.id}', false)" title="Reimprimir ticket">🖨️</button>` : ""}
+          ${esPrimeraLineaTicket && estadoPago==='completada' && ticket ? `<button class="btn small" style="background:var(--gold);border-color:var(--gold);color:#3a2c00;" onclick="openPendienteModal('${ticket.id}')" title="Marcar como pendiente">⏳</button>` : ""}
+          ${esPrimeraLineaTicket && estadoPago==='pendiente' && ticket ? `<button class="btn small" style="background:var(--gold);border-color:var(--gold);color:#3a2c00;" onclick="openPendienteModal('${ticket.id}')" title="Ver / editar pendiente">⏳</button>` : ""}
           ${puedeDevolver? `<button class="btn small secondary" onclick="openDevolucionModal('${s.id}')" title="Registrar devolución">↩️</button>` : ""}
-          ${ticket ? `<button class="btn small danger" onclick="eliminarTicket('${ticket.id}')" title="Eliminar ticket">🗑️ Eliminar</button>` : ""}
+          ${esPrimeraLineaTicket && ticket ? `<button class="btn small danger" onclick="eliminarTicket('${ticket.id}')" title="Eliminar ticket">🗑️</button>` : ""}
         </div>
       </td>
     </tr>`);
@@ -1412,12 +1533,12 @@ function renderInformes(){
           <span style="font-size:13px;color:var(--ink-dim);">
             Estado: ${(cajonBTChar||cajonPort)? `<b style="color:var(--teal);">${cajonBTChar?'🔵 Bluetooth conectado':'🔌 USB conectado'}</b>` : `<b style="color:var(--red);">No conectado</b>`}
           </span>
-          ${navigator.bluetooth!==undefined ? `<button type="button" class="btn small secondary" onclick="conectarCajonBluetooth()">🔵 Conectar Bluetooth</button>` : ""}
-          ${navigator.serial!==undefined ? `<button type="button" class="btn small secondary" onclick="conectarCajonUSB()">🔌 Conectar USB</button>` : ""}
+          <button type="button" class="btn small secondary" onclick="conectarCajonUSB()">🔌 Conectar USB</button>
+          <button type="button" class="btn small secondary" onclick="conectarCajonBluetooth()">🔵 Conectar Bluetooth</button>
           ${(cajonBTChar||cajonPort)? `<button type="button" class="btn small secondary" onclick="desconectarCajon()">Desconectar</button>` : ""}
         </div>
         <div class="note" style="margin-top:8px;font-size:11.5px;">
-          Envía el comando de apertura directamente a la impresora/cajón. <b>Bluetooth</b>: disponible en Chrome Android y escritorio. <b>USB</b>: solo Chrome/Edge de escritorio.
+          <b>USB</b>: Chrome/Edge escritorio, conecta el puerto COM/USB de la impresora. <b>Bluetooth</b>: Chrome Android o escritorio con impresora BLE.
         </div>
       </div>
       <div class="field-row">
@@ -1617,6 +1738,88 @@ async function intentarReconectarCajon(){
 }
 
 // ---- ABRIR CAJÓN: envía el comando ESC/POS por el canal disponible ----
+// ---------------- CALCULADORA DE CAMBIO ----------------
+function abrirCalculadoraCambio(){
+  // Total del carrito actual si hay artículos, si no 0
+  var totalCarrito = cart.length > 0 ? cartTotals().total : 0;
+
+  document.getElementById('modal-root').innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this) closeModal()">
+      <div class="modal" style="max-width:340px;">
+        <h3 style="margin-bottom:16px;">🧮 Calculadora de cambio</h3>
+
+        <div class="field">
+          <label>Total a cobrar (€)</label>
+          <input type="number" id="calc-total" step="0.01" min="0"
+            value="${totalCarrito>0 ? totalCarrito.toFixed(2) : ''}"
+            placeholder="0,00"
+            style="width:100%;font-size:20px;font-weight:700;text-align:right;"
+            oninput="actualizarCambio()">
+        </div>
+
+        <div class="field" style="margin-top:8px;">
+          <label>El cliente entrega (€)</label>
+          <input type="number" id="calc-pago" step="0.01" min="0"
+            placeholder="0,00"
+            style="width:100%;font-size:24px;font-weight:700;text-align:right;color:var(--coral);"
+            oninput="actualizarCambio()" autofocus>
+        </div>
+
+        <!-- Teclado numérico rápido para pantalla táctil -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:14px 0;">
+          ${[5,10,20,50].map(v=>`
+            <button onclick="document.getElementById('calc-pago').value=${v};actualizarCambio();"
+              style="background:var(--canvas);border:1.5px solid var(--line);border-radius:var(--radius-sm);padding:10px 4px;font-size:14px;font-weight:700;cursor:pointer;">
+              ${v}€
+            </button>`).join('')}
+        </div>
+
+        <div id="calc-resultado" style="background:var(--teal-light);border-radius:var(--radius-sm);padding:16px;text-align:center;margin-bottom:16px;display:none;">
+          <div style="font-size:12px;color:var(--teal);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Cambio a devolver</div>
+          <div id="calc-cambio" style="font-size:36px;font-weight:800;color:var(--teal);"></div>
+        </div>
+
+        <div id="calc-error" style="background:#FEE;border-radius:var(--radius-sm);padding:12px;text-align:center;margin-bottom:16px;color:var(--red);font-weight:700;display:none;">
+          ⚠️ El cliente no entrega suficiente dinero
+        </div>
+
+        <div class="modal-actions" style="justify-content:center;">
+          <button class="btn secondary" onclick="closeModal()">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  `;
+  // Si hay total del carrito, enfocar el campo de pago
+  var campoPago = document.getElementById('calc-pago');
+  if(campoPago) campoPago.focus();
+}
+
+function actualizarCambio(){
+  var total = parseFloat(document.getElementById('calc-total').value) || 0;
+  var pago  = parseFloat(document.getElementById('calc-pago').value)  || 0;
+  var resDiv = document.getElementById('calc-resultado');
+  var errDiv = document.getElementById('calc-error');
+  var cambioDiv = document.getElementById('calc-cambio');
+
+  if(!resDiv || !errDiv || !cambioDiv) return;
+
+  if(pago <= 0 || total <= 0){
+    resDiv.style.display = 'none';
+    errDiv.style.display = 'none';
+    return;
+  }
+
+  var cambio = pago - total;
+  if(cambio < 0){
+    resDiv.style.display = 'none';
+    errDiv.style.display = 'block';
+  } else {
+    errDiv.style.display = 'none';
+    resDiv.style.display = 'block';
+    cambioDiv.textContent = eur(cambio);
+  }
+}
+
 async function abrirCajon(){
   var CMD = new Uint8Array([0x1B, 0x70, 0x00, 0x19, 0xFA]);
 
@@ -1817,6 +2020,7 @@ function abrirTicketImprimible(ticketId, autoImprimir){
 }
 
 function openPendienteModal(ticketId){
+  try{ _scrollGuardado = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0; }catch(e){ _scrollGuardado=0; }
   const t = state.tickets.find(x=>x.id===ticketId);
   if(!t) return;
   const c = t.datosCliente || { nombre:'', telefono:'', dni:'', notas:'' };
@@ -1863,8 +2067,8 @@ function guardarPendiente(ticketId){
   };
   saveState();
   closeModal();
-  renderPreservandoScroll();
-  showToast(`Venta marcada como pendiente ✓`, "ok");
+  actualizarFilasTicket(ticketId);
+  showToast('Venta marcada como pendiente ✓', "ok");
 }
 
 function marcarCompletada(ticketId){
@@ -1873,13 +2077,56 @@ function marcarCompletada(ticketId){
   t.estadoPago = 'completada';
   saveState();
   closeModal();
-  renderPreservandoScroll();
-  showToast(`Venta marcada como completada ✓`, "ok");
+  actualizarFilasTicket(ticketId);
+  showToast('Venta marcada como completada ✓', "ok");
+}
+
+// Actualiza las celdas de estado y acciones de todas las filas de un ticket
+// directamente en el DOM, sin hacer render() completo — así no hay salto de scroll.
+function actualizarFilasTicket(ticketId){
+  const t = state.tickets.find(x=>x.id===ticketId);
+  if(!t) return;
+
+  const filas = document.querySelectorAll('tr[data-ticketid="'+ticketId+'"]');
+  if(!filas || filas.length===0){
+    // Fallback: si no encuentra las filas (p.ej. primer render), usar scroll preservado
+    renderPreservandoScroll();
+    return;
+  }
+
+  const esPendiente = (t.estadoPago||'completada') === 'pendiente';
+  const nombreCliente = t.datosCliente && t.datosCliente.nombre ? t.datosCliente.nombre : '';
+
+  const badgePago = esPendiente
+    ? '<button class="estado-pendiente" onclick="openPendienteModal(\''+ticketId+'\')" title="'+(nombreCliente?'👤 '+escapeHtml(nombreCliente):'Sin datos de cliente')+'">⏳ Pendiente'+(nombreCliente?' — '+escapeHtml(nombreCliente):'')+' </button>'
+    : '<span class="estado-completada">✅ Completada</span>';
+
+  const btnPend = esPendiente
+    ? '<button class="btn small" style="background:var(--gold);border-color:var(--gold);color:#3a2c00;" onclick="openPendienteModal(\''+ticketId+'\')" title="Ver / editar pendiente">⏳</button>'
+    : '<button class="btn small" style="background:var(--gold);border-color:var(--gold);color:#3a2c00;" onclick="openPendienteModal(\''+ticketId+'\')" title="Marcar como pendiente">⏳</button>';
+
+  filas.forEach(function(fila, idx) {
+    // Celda de estado de pago (columna 9, índice 8)
+    const celdas = fila.querySelectorAll('td');
+    if(celdas.length < 9) return;
+    if(idx === 0) celdas[8].innerHTML = badgePago; // solo primera fila del ticket
+    else celdas[8].innerHTML = '';
+
+    // Actualizar el botón ⏳ dentro del div de acciones (última celda)
+    if(idx === 0){
+      const accionesCelda = celdas[celdas.length-1];
+      const btnsPendientes = accionesCelda.querySelectorAll('.btn.small[style*="gold"]');
+      btnsPendientes.forEach(function(b){ b.outerHTML = btnPend; });
+    }
+  });
 }
 
 function eliminarTicket(ticketId){
   const t = state.tickets.find(x=>x.id===ticketId);
   if(!t) return;
+  // Guardar scroll AHORA, antes de que el modal toque el DOM
+  try{ _scrollGuardado = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0; }catch(e){ _scrollGuardado=0; }
+
   const lineas = state.sales.filter(s=>s.ticketId===ticketId);
   const devs = state.devoluciones.filter(d=>d.ticketId===ticketId);
   const tieneDevs = devs.length > 0;
@@ -1920,7 +2167,11 @@ function confirmarEliminarTicket(ticketId){
   state.tickets = state.tickets.filter(x=>x.id!==ticketId);
   saveState();
   closeModal();
-  renderPreservandoScroll();
+  var sy = (typeof _scrollGuardado !== 'undefined') ? _scrollGuardado : 0;
+  render();
+  setTimeout(function(){
+    try{ window.scrollTo(0,sy); document.documentElement.scrollTop=sy; document.body.scrollTop=sy; }catch(e){}
+  }, 0);
   showToast("Ticket eliminado y stock repuesto ✓", "ok");
 }
 
@@ -3057,6 +3308,103 @@ async function registerTicket(lines, fechaIso, skipStock, descuento, metodoPago)
 
 async function checkout(){
   if(cart.length===0) return;
+  if(cartMetodoPago === 'efectivo'){
+    // Pago en efectivo: mostrar calculadora de cambio antes de completar
+    var totales = cartTotals();
+    abrirModalEfectivo(totales.total);
+    return;
+  }
+  await completarVenta();
+}
+
+function abrirModalEfectivo(totalACobrar){
+  document.getElementById('modal-root').innerHTML = `
+    <div class="modal-overlay">
+      <div class="modal" style="max-width:400px;">
+        <h3 style="margin-bottom:4px;">💵 Pago en efectivo</h3>
+        <div style="font-size:26px;font-weight:800;text-align:center;color:var(--coral);margin:10px 0;">
+          Total: ${eur(totalACobrar)}
+        </div>
+
+        <div class="field">
+          <label>El cliente entrega (€)</label>
+          <input type="number" id="ef-pago" step="0.01" min="0" placeholder="0,00"
+            style="width:100%;font-size:24px;font-weight:700;text-align:right;padding:10px 12px;"
+            oninput="calcularCambioEfectivo(${totalACobrar})">
+        </div>
+
+        <div style="margin:10px 0 4px;font-size:11px;font-weight:700;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.5px;">Billetes</div>
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin-bottom:10px;">
+          ${[5,10,20,50,100].map(function(v){ return `
+            <button onclick="sumarEfectivo(${v},${totalACobrar})"
+              style="background:#fff8e1;border:1.5px solid #f0c040;border-radius:var(--radius-sm);padding:9px 2px;font-size:14px;font-weight:800;cursor:pointer;color:#7a5c00;">
+              ${v}€
+            </button>`; }).join('')}
+        </div>
+
+        <div style="margin:4px 0;font-size:11px;font-weight:700;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.5px;">Monedas</div>
+        <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:5px;margin-bottom:12px;">
+          ${[0.01,0.02,0.05,0.10,0.20,0.50,1,2].map(function(v){ return `
+            <button onclick="sumarEfectivo(${v},${totalACobrar})"
+              style="background:#f5f5f5;border:1.5px solid var(--line);border-radius:var(--radius-sm);padding:7px 2px;font-size:12px;font-weight:700;cursor:pointer;">
+              ${v<1 ? (v*100).toFixed(0)+'c' : v+'€'}
+            </button>`; }).join('')}
+        </div>
+
+        <div id="ef-resultado" style="background:var(--teal-light);border-radius:var(--radius-sm);padding:14px;text-align:center;margin-bottom:10px;display:none;">
+          <div style="font-size:11px;color:var(--teal);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Cambio a devolver</div>
+          <div id="ef-cambio" style="font-size:38px;font-weight:800;color:var(--teal);"></div>
+        </div>
+
+        <div id="ef-error" style="background:#FEE;border-radius:var(--radius-sm);padding:10px;text-align:center;color:var(--red);font-weight:700;margin-bottom:10px;display:none;">
+          ⚠️ Importe insuficiente
+        </div>
+
+        <div class="modal-actions" style="justify-content:center;gap:10px;">
+          <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+          <button id="ef-btn-cobrar" class="btn accent" style="font-size:15px;padding:11px 24px;opacity:0.4;pointer-events:none;" onclick="closeModal(); completarVenta();">
+            ✅ Cobrar
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+  setTimeout(function(){ var inp=document.getElementById('ef-pago'); if(inp) inp.focus(); }, 50);
+}
+
+function sumarEfectivo(valor, total){
+  var inp = document.getElementById('ef-pago');
+  if(!inp) return;
+  var actual = parseFloat(inp.value) || 0;
+  inp.value = (actual + valor).toFixed(2);
+  calcularCambioEfectivo(total);
+}
+
+function calcularCambioEfectivo(total){
+  var pago = parseFloat(document.getElementById('ef-pago').value) || 0;
+  var resDiv = document.getElementById('ef-resultado');
+  var errDiv = document.getElementById('ef-error');
+  var cambioDiv = document.getElementById('ef-cambio');
+  var btnCobrar = document.getElementById('ef-btn-cobrar');
+  if(!resDiv) return;
+
+  if(pago <= 0){
+    resDiv.style.display='none'; errDiv.style.display='none';
+    if(btnCobrar){ btnCobrar.style.opacity='0.4'; btnCobrar.style.pointerEvents='none'; }
+    return;
+  }
+  var cambio = pago - total;
+  if(cambio < 0){
+    resDiv.style.display='none'; errDiv.style.display='block';
+    if(btnCobrar){ btnCobrar.style.opacity='0.4'; btnCobrar.style.pointerEvents='none'; }
+  } else {
+    errDiv.style.display='none'; resDiv.style.display='block';
+    cambioDiv.textContent = eur(cambio);
+    if(btnCobrar){ btnCobrar.style.opacity='1'; btnCobrar.style.pointerEvents='auto'; }
+  }
+}
+
+async function completarVenta(){
   try{
     const ticket = await registerTicket(cart, new Date().toISOString(), false, cartDescuentoActual(), cartMetodoPago);
     cart = [];
@@ -3065,10 +3413,10 @@ async function checkout(){
     cartDescuentoTipo = "porcentaje";
     cartMetodoPago = "efectivo";
     saveState();
-    render(); // el carrito ya está vacío y la venta aparece en el historial
+    render();
     showToast("✅ Venta completada — " + ticket.numSerieFactura, "ok");
     if(state.settings.cajonHabilitado) abrirCajon();
-    if(state.settings.autoImprimir!==false) setTimeout(()=>abrirTicketImprimible(ticket.id, true), 300);
+    if(state.settings.autoImprimir!==false) setTimeout(function(){ abrirTicketImprimible(ticket.id, true); }, 300);
   }catch(e){
     console.error(e);
     showToast("No se pudo registrar la venta. Revisa la consola.", "err");
@@ -3273,7 +3621,12 @@ document.querySelectorAll(".tabs button").forEach(btn=>{
   btn.addEventListener("click", ()=>{ currentTab = btn.dataset.tab; render(); });
 });
 
-loadState();
+// Arrancar Firebase y luego cargar el estado
+iniciarFirebase();
+loadState().then(function(){
+  // Activar escucha en tiempo real una vez cargado el estado inicial
+  iniciarEscuchaFirebase();
+});
 
 // Reloj en tiempo real en la cabecera
 function actualizarReloj(){
