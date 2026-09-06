@@ -364,7 +364,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "4.5.4";
+const APP_VERSION = "4.5.6";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -840,14 +840,15 @@ function render(){
   else view.innerHTML = renderInformes();
 
   setTimeout(()=>{
-    if(tabChanged){
-      // Al entrar en la pestaña (no en cada tecla), llevar el foco al escáner de código de barras
+    // Solo enfocar el escáner automáticamente en PC (no en táctil, para no abrir el teclado)
+    var esTactil = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    if(tabChanged && !esTactil){
       if(currentTab==="almacen"){
         const s = document.getElementById("scan-almacen"); if(s) s.focus();
       } else if(currentTab==="ventas"){
         const s = document.getElementById("scan-ventas"); if(s) s.focus();
       }
-    } else if(activeId){
+    } else if(!tabChanged && activeId){
       // Re-render dentro de la misma pestaña (p. ej. escribiendo en un buscador): devolver el foco y el cursor
       const el = document.getElementById(activeId);
       if(el){
@@ -3684,6 +3685,14 @@ if('serviceWorker' in navigator && location.protocol !== 'file:'){
     navigator.serviceWorker.register('./sw.js').then(function(reg) {
       reg.update();
 
+      // Comprobar actualizaciones cada 5 minutos
+      setInterval(function(){ reg.update(); }, 5 * 60 * 1000);
+
+      // Comprobar cuando el usuario vuelve a la pestaña
+      document.addEventListener('visibilitychange', function(){
+        if(document.visibilityState === 'visible') reg.update();
+      });
+
       // Escuchar mensajes del SW (nueva versión instalada)
       navigator.serviceWorker.addEventListener('message', function(event) {
         if(event.data && event.data.tipo === 'nueva-version'){
@@ -3692,7 +3701,7 @@ if('serviceWorker' in navigator && location.protocol !== 'file:'){
             banner = document.createElement('div');
             banner.id = 'update-banner';
             banner.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#FF5A3C;color:#fff;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;z-index:9998;font-size:14px;font-weight:600;box-shadow:0 -2px 12px rgba(0,0,0,.2);';
-            banner.innerHTML = '<span>🆕 Nueva versión disponible (v'+event.data.version+')</span><button onclick="window.location.reload()" style="background:#fff;color:#FF5A3C;border:none;padding:8px 18px;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px;">Actualizar ahora</button>';
+            banner.innerHTML = '<span>🆕 Nueva versión disponible</span><button onclick="window.location.reload()" style="background:#fff;color:#FF5A3C;border:none;padding:8px 18px;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px;">Actualizar ahora</button>';
             document.body.appendChild(banner);
           }
         }
