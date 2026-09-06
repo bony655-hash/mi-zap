@@ -30,10 +30,7 @@
 //# sourceMappingURL=chart.umd.js.map
 
 </script>
-<script>
-/* qrcodejs v1.0.0 incrustado para funcionar sin internet */
-var QRCode;!function(){function a(a){this.mode=c.MODE_8BIT_BYTE,this.data=a,this.parsedData=[];for(var b=[],d=0,e=this.data.length;e>d;d++){var f=this.data.charCodeAt(d);f>65536?(b[0]=240|(1835008&f)>>>18,b[1]=128|(258048&f)>>>12,b[2]=128|(4032&f)>>>6,b[3]=128|63&f):f>2048?(b[0]=224|(61440&f)>>>12,b[1]=128|(4032&f)>>>6,b[2]=128|63&f):f>128?(b[0]=192|(1984&f)>>>6,b[1]=128|63&f):b[0]=f,this.parsedData=this.parsedData.concat(b)}this.parsedData.length!=this.data.length&&(this.parsedData.unshift(191),this.parsedData.unshift(187),this.parsedData.unshift(239))}function b(a,b){this.typeNumber=a,this.errorCorrectLevel=b,this.modules=null,this.moduleCount=0,this.dataCache=null,this.dataList=[]}function i(a,b){if(void 0==a.length)throw new Error(a.length+"/"+b);for(var c=0;c<a.length&&0==a[c];)c++;this.num=new Array(a.length-c+b);for(var d=0;d<a.length-c;d++)this.num[d]=a[d+c]}function j(a,b){this.totalCount=a,this.dataCount=b}function k(){this.buffer=[],this.length=0}function m(){return"undefined"!=typeof CanvasRenderingContext2D}function n(){var a=!1,b=navigator.userAgent;return/android/i.test(b)&&(a=!0,aMat=b.toString().match(/android ([0-9]\.[0-9])/i),aMat&&aMat[1]&&(a=parseFloat(aMat[1]))),a}function r(a,b){for(var c=1,e=s(a),f=0,g=l.length;g>=f;f++){var h=0;switch(b){case d.L:h=l[f][0];break;case d.M:h=l[f][1];break;case d.Q:h=l[f][2];break;case d.H:h=l[f][3]}if(h>=e)break;c++}if(c>l.length)throw new Error("Too long data");return c}function s(a){var b=encodeURI(a).toString().replace(/\%[0-9a-fA-F]{2}/g,"a");return b.length+(b.length!=a?3:0)}a.prototype={getLength:function(){return this.parsedData.length},write:function(a){for(var b=0,c=this.parsedData.length;c>b;b++)a.put(this.parsedData[b],8)}},b.prototype={addData:function(b){var c=new a(b);this.dataList.push(c),this.dataCache=null},isDark:function(a,b){if(0>a||this.moduleCount<=a||0>b||this.moduleCount<=b)throw new Error(a+","+b);return this.modules[a][b]},getModuleCount:function(){return this.moduleCount},make:function(){this.makeImpl(!1,this.getBestMaskPattern())},makeImpl:function(a,c){this.moduleCount=4*this.typeNumber+17,this.modules=new Array(this.moduleCount);for(var d=0;d<this.moduleCount;d++){this.modules[d]=new Array(this.moduleCount);for(var e=0;e<this.moduleCount;e++)this.modules[d][e]=null}this.setupPositionProbePattern(0,0),this.setupPositionProbePattern(this.moduleCount-7,0),this.setupPositionProbePattern(0,this.moduleCount-7),this.setupPositionAdjustPattern(),this.setupTimingPattern(),this.setupTypeInfo(a,c),this.typeNumber>=7&&this.setupTypeNumber(a),null==this.dataCache&&(this.dataCache=b.createData(this.typeNumber,this.errorCorrectLevel,this.dataList)),this.mapData(this.dataCache,c)},setupPositionProbePattern:function(a,b){for(var c=-1;7>=c;c++)if(!(-1>=a+c||this.moduleCount<=a+c))for(var d=-1;7>=d;d++)-1>=b+d||this.moduleCount<=b+d||(this.modules[a+c][b+d]=c>=0&&6>=c&&(0==d||6==d)||d>=0&&6>=d&&(0==c||6==c)||c>=2&&4>=c&&d>=2&&4>=d?!0:!1)},getBestMaskPattern:function(){for(var a=0,b=0,c=0;8>c;c++){this.makeImpl(!0,c);var d=f.getLostPoint(this);(0==c||a>d)&&(a=d,b=c)}return b},createMovieClip:function(a,b,c){var d=a.createEmptyMovieClip(b,c),e=1;this.make();for(var f=0;f<this.modules.length;f++)for(var g=f*e,h=0;h<this.modules[f].length;h++){var i=h*e,j=this.modules[f][h];j&&(d.beginFill(0,100),d.moveTo(i,g),d.lineTo(i+e,g),d.lineTo(i+e,g+e),d.lineTo(i,g+e),d.endFill())}return d},setupTimingPattern:function(){for(var a=8;a<this.moduleCount-8;a++)null==this.modules[a][6]&&(this.modules[a][6]=0==a%2);for(var b=8;b<this.moduleCount-8;b++)null==this.modules[6][b]&&(this.modules[6][b]=0==b%2)},setupPositionAdjustPattern:function(){for(var a=f.getPatternPosition(this.typeNumber),b=0;b<a.length;b++)for(var c=0;c<a.length;c++){var d=a[b],e=a[c];if(null==this.modules[d][e])for(var g=-2;2>=g;g++)for(var h=-2;2>=h;h++)this.modules[d+g][e+h]=-2==g||2==g||-2==h||2==h||0==g&&0==h?!0:!1}},setupTypeNumber:function(a){for(var b=f.getBCHTypeNumber(this.typeNumber),c=0;18>c;c++){var d=!a&&1==(1&b>>c);this.modules[Math.floor(c/3)][c%3+this.moduleCount-8-3]=d}for(var c=0;18>c;c++){var d=!a&&1==(1&b>>c);this.modules[c%3+this.moduleCount-8-3][Math.floor(c/3)]=d}},setupTypeInfo:function(a,b){for(var c=this.errorCorrectLevel<<3|b,d=f.getBCHTypeInfo(c),e=0;15>e;e++){var g=!a&&1==(1&d>>e);6>e?this.modules[e][8]=g:8>e?this.modules[e+1][8]=g:this.modules[this.moduleCount-15+e][8]=g}for(var e=0;15>e;e++){var g=!a&&1==(1&d>>e);8>e?this.modules[8][this.moduleCount-e-1]=g:9>e?this.modules[8][15-e-1+1]=g:this.modules[8][15-e-1]=g}this.modules[this.moduleCount-8][8]=!a},mapData:function(a,b){for(var c=-1,d=this.moduleCount-1,e=7,g=0,h=this.moduleCount-1;h>0;h-=2)for(6==h&&h--;;){for(var i=0;2>i;i++)if(null==this.modules[d][h-i]){var j=!1;g<a.length&&(j=1==(1&a[g]>>>e));var k=f.getMask(b,d,h-i);k&&(j=!j),this.modules[d][h-i]=j,e--,-1==e&&(g++,e=7)}if(d+=c,0>d||this.moduleCount<=d){d-=c,c=-c;break}}}},b.PAD0=236,b.PAD1=17,b.createData=function(a,c,d){for(var e=j.getRSBlocks(a,c),g=new k,h=0;h<d.length;h++){var i=d[h];g.put(i.mode,4),g.put(i.getLength(),f.getLengthInBits(i.mode,a)),i.write(g)}for(var l=0,h=0;h<e.length;h++)l+=e[h].dataCount;if(g.getLengthInBits()>8*l)throw new Error("code length overflow. ("+g.getLengthInBits()+">"+8*l+")");for(g.getLengthInBits()+4<=8*l&&g.put(0,4);0!=g.getLengthInBits()%8;)g.putBit(!1);for(;;){if(g.getLengthInBits()>=8*l)break;if(g.put(b.PAD0,8),g.getLengthInBits()>=8*l)break;g.put(b.PAD1,8)}return b.createBytes(g,e)},b.createBytes=function(a,b){for(var c=0,d=0,e=0,g=new Array(b.length),h=new Array(b.length),j=0;j<b.length;j++){var k=b[j].dataCount,l=b[j].totalCount-k;d=Math.max(d,k),e=Math.max(e,l),g[j]=new Array(k);for(var m=0;m<g[j].length;m++)g[j][m]=255&a.buffer[m+c];c+=k;var n=f.getErrorCorrectPolynomial(l),o=new i(g[j],n.getLength()-1),p=o.mod(n);h[j]=new Array(n.getLength()-1);for(var m=0;m<h[j].length;m++){var q=m+p.getLength()-h[j].length;h[j][m]=q>=0?p.get(q):0}}for(var r=0,m=0;m<b.length;m++)r+=b[m].totalCount;for(var s=new Array(r),t=0,m=0;d>m;m++)for(var j=0;j<b.length;j++)m<g[j].length&&(s[t++]=g[j][m]);for(var m=0;e>m;m++)for(var j=0;j<b.length;j++)m<h[j].length&&(s[t++]=h[j][m]);return s};for(var c={MODE_NUMBER:1,MODE_ALPHA_NUM:2,MODE_8BIT_BYTE:4,MODE_KANJI:8},d={L:1,M:0,Q:3,H:2},e={PATTERN000:0,PATTERN001:1,PATTERN010:2,PATTERN011:3,PATTERN100:4,PATTERN101:5,PATTERN110:6,PATTERN111:7},f={PATTERN_POSITION_TABLE:[[],[6,18],[6,22],[6,26],[6,30],[6,34],[6,22,38],[6,24,42],[6,26,46],[6,28,50],[6,30,54],[6,32,58],[6,34,62],[6,26,46,66],[6,26,48,70],[6,26,50,74],[6,30,54,78],[6,30,56,82],[6,30,58,86],[6,34,62,90],[6,28,50,72,94],[6,26,50,74,98],[6,30,54,78,102],[6,28,54,80,106],[6,32,58,84,110],[6,30,58,86,114],[6,34,62,90,118],[6,26,50,74,98,122],[6,30,54,78,102,126],[6,26,52,78,104,130],[6,30,56,82,108,134],[6,34,60,86,112,138],[6,30,58,86,114,142],[6,34,62,90,118,146],[6,30,54,78,102,126,150],[6,24,50,76,102,128,154],[6,28,54,80,106,132,158],[6,32,58,84,110,136,162],[6,26,54,82,110,138,166],[6,30,58,86,114,142,170]],G15:1335,G18:7973,G15_MASK:21522,getBCHTypeInfo:function(a){for(var b=a<<10;f.getBCHDigit(b)-f.getBCHDigit(f.G15)>=0;)b^=f.G15<<f.getBCHDigit(b)-f.getBCHDigit(f.G15);return(a<<10|b)^f.G15_MASK},getBCHTypeNumber:function(a){for(var b=a<<12;f.getBCHDigit(b)-f.getBCHDigit(f.G18)>=0;)b^=f.G18<<f.getBCHDigit(b)-f.getBCHDigit(f.G18);return a<<12|b},getBCHDigit:function(a){for(var b=0;0!=a;)b++,a>>>=1;return b},getPatternPosition:function(a){return f.PATTERN_POSITION_TABLE[a-1]},getMask:function(a,b,c){switch(a){case e.PATTERN000:return 0==(b+c)%2;case e.PATTERN001:return 0==b%2;case e.PATTERN010:return 0==c%3;case e.PATTERN011:return 0==(b+c)%3;case e.PATTERN100:return 0==(Math.floor(b/2)+Math.floor(c/3))%2;case e.PATTERN101:return 0==b*c%2+b*c%3;case e.PATTERN110:return 0==(b*c%2+b*c%3)%2;case e.PATTERN111:return 0==(b*c%3+(b+c)%2)%2;default:throw new Error("bad maskPattern:"+a)}},getErrorCorrectPolynomial:function(a){for(var b=new i([1],0),c=0;a>c;c++)b=b.multiply(new i([1,g.gexp(c)],0));return b},getLengthInBits:function(a,b){if(b>=1&&10>b)switch(a){case c.MODE_NUMBER:return 10;case c.MODE_ALPHA_NUM:return 9;case c.MODE_8BIT_BYTE:return 8;case c.MODE_KANJI:return 8;default:throw new Error("mode:"+a)}else if(27>b)switch(a){case c.MODE_NUMBER:return 12;case c.MODE_ALPHA_NUM:return 11;case c.MODE_8BIT_BYTE:return 16;case c.MODE_KANJI:return 10;default:throw new Error("mode:"+a)}else{if(!(41>b))throw new Error("type:"+b);switch(a){case c.MODE_NUMBER:return 14;case c.MODE_ALPHA_NUM:return 13;case c.MODE_8BIT_BYTE:return 16;case c.MODE_KANJI:return 12;default:throw new Error("mode:"+a)}}},getLostPoint:function(a){for(var b=a.getModuleCount(),c=0,d=0;b>d;d++)for(var e=0;b>e;e++){for(var f=0,g=a.isDark(d,e),h=-1;1>=h;h++)if(!(0>d+h||d+h>=b))for(var i=-1;1>=i;i++)0>e+i||e+i>=b||(0!=h||0!=i)&&g==a.isDark(d+h,e+i)&&f++;f>5&&(c+=3+f-5)}for(var d=0;b-1>d;d++)for(var e=0;b-1>e;e++){var j=0;a.isDark(d,e)&&j++,a.isDark(d+1,e)&&j++,a.isDark(d,e+1)&&j++,a.isDark(d+1,e+1)&&j++,(0==j||4==j)&&(c+=3)}for(var d=0;b>d;d++)for(var e=0;b-6>e;e++)a.isDark(d,e)&&!a.isDark(d,e+1)&&a.isDark(d,e+2)&&a.isDark(d,e+3)&&a.isDark(d,e+4)&&!a.isDark(d,e+5)&&a.isDark(d,e+6)&&(c+=40);for(var e=0;b>e;e++)for(var d=0;b-6>d;d++)a.isDark(d,e)&&!a.isDark(d+1,e)&&a.isDark(d+2,e)&&a.isDark(d+3,e)&&a.isDark(d+4,e)&&!a.isDark(d+5,e)&&a.isDark(d+6,e)&&(c+=40);for(var k=0,e=0;b>e;e++)for(var d=0;b>d;d++)a.isDark(d,e)&&k++;var l=Math.abs(100*k/b/b-50)/5;return c+=10*l}},g={glog:function(a){if(1>a)throw new Error("glog("+a+")");return g.LOG_TABLE[a]},gexp:function(a){for(;0>a;)a+=255;for(;a>=256;)a-=255;return g.EXP_TABLE[a]},EXP_TABLE:new Array(256),LOG_TABLE:new Array(256)},h=0;8>h;h++)g.EXP_TABLE[h]=1<<h;for(var h=8;256>h;h++)g.EXP_TABLE[h]=g.EXP_TABLE[h-4]^g.EXP_TABLE[h-5]^g.EXP_TABLE[h-6]^g.EXP_TABLE[h-8];for(var h=0;255>h;h++)g.LOG_TABLE[g.EXP_TABLE[h]]=h;i.prototype={get:function(a){return this.num[a]},getLength:function(){return this.num.length},multiply:function(a){for(var b=new Array(this.getLength()+a.getLength()-1),c=0;c<this.getLength();c++)for(var d=0;d<a.getLength();d++)b[c+d]^=g.gexp(g.glog(this.get(c))+g.glog(a.get(d)));return new i(b,0)},mod:function(a){if(this.getLength()-a.getLength()<0)return this;for(var b=g.glog(this.get(0))-g.glog(a.get(0)),c=new Array(this.getLength()),d=0;d<this.getLength();d++)c[d]=this.get(d);for(var d=0;d<a.getLength();d++)c[d]^=g.gexp(g.glog(a.get(d))+b);return new i(c,0).mod(a)}},j.RS_BLOCK_TABLE=[[1,26,19],[1,26,16],[1,26,13],[1,26,9],[1,44,34],[1,44,28],[1,44,22],[1,44,16],[1,70,55],[1,70,44],[2,35,17],[2,35,13],[1,100,80],[2,50,32],[2,50,24],[4,25,9],[1,134,108],[2,67,43],[2,33,15,2,34,16],[2,33,11,2,34,12],[2,86,68],[4,43,27],[4,43,19],[4,43,15],[2,98,78],[4,49,31],[2,32,14,4,33,15],[4,39,13,1,40,14],[2,121,97],[2,60,38,2,61,39],[4,40,18,2,41,19],[4,40,14,2,41,15],[2,146,116],[3,58,36,2,59,37],[4,36,16,4,37,17],[4,36,12,4,37,13],[2,86,68,2,87,69],[4,69,43,1,70,44],[6,43,19,2,44,20],[6,43,15,2,44,16],[4,101,81],[1,80,50,4,81,51],[4,50,22,4,51,23],[3,36,12,8,37,13],[2,116,92,2,117,93],[6,58,36,2,59,37],[4,46,20,6,47,21],[7,42,14,4,43,15],[4,133,107],[8,59,37,1,60,38],[8,44,20,4,45,21],[12,33,11,4,34,12],[3,145,115,1,146,116],[4,64,40,5,65,41],[11,36,16,5,37,17],[11,36,12,5,37,13],[5,109,87,1,110,88],[5,65,41,5,66,42],[5,54,24,7,55,25],[11,36,12],[5,122,98,1,123,99],[7,73,45,3,74,46],[15,43,19,2,44,20],[3,45,15,13,46,16],[1,135,107,5,136,108],[10,74,46,1,75,47],[1,50,22,15,51,23],[2,42,14,17,43,15],[5,150,120,1,151,121],[9,69,43,4,70,44],[17,50,22,1,51,23],[2,42,14,19,43,15],[3,141,113,4,142,114],[3,70,44,11,71,45],[17,47,21,4,48,22],[9,39,13,16,40,14],[3,135,107,5,136,108],[3,67,41,13,68,42],[15,54,24,5,55,25],[15,43,15,10,44,16],[4,144,116,4,145,117],[17,68,42],[17,50,22,6,51,23],[19,46,16,6,47,17],[2,139,111,7,140,112],[17,74,46],[7,54,24,16,55,25],[34,37,13],[4,151,121,5,152,122],[4,75,47,14,76,48],[11,54,24,14,55,25],[16,45,15,14,46,16],[6,147,117,4,148,118],[6,73,45,14,74,46],[11,54,24,16,55,25],[30,46,16,2,47,17],[8,132,106,4,133,107],[8,75,47,13,76,48],[7,54,24,22,55,25],[22,45,15,13,46,16],[10,142,114,2,143,115],[19,74,46,4,75,47],[28,50,22,6,51,23],[33,46,16,4,47,17],[8,152,122,4,153,123],[22,73,45,3,74,46],[8,53,23,26,54,24],[12,45,15,28,46,16],[3,147,117,10,148,118],[3,73,45,23,74,46],[4,54,24,31,55,25],[11,45,15,31,46,16],[7,146,116,7,147,117],[21,73,45,7,74,46],[1,53,23,37,54,24],[19,45,15,26,46,16],[5,145,115,10,146,116],[19,75,47,10,76,48],[15,54,24,25,55,25],[23,45,15,25,46,16],[13,145,115,3,146,116],[2,74,46,29,75,47],[42,54,24,1,55,25],[23,45,15,28,46,16],[17,145,115],[10,74,46,23,75,47],[10,54,24,35,55,25],[19,45,15,35,46,16],[17,145,115,1,146,116],[14,74,46,21,75,47],[29,54,24,19,55,25],[11,45,15,46,46,16],[13,145,115,6,146,116],[14,74,46,23,75,47],[44,54,24,7,55,25],[59,46,16,1,47,17],[12,151,121,7,152,122],[12,75,47,26,76,48],[39,54,24,14,55,25],[22,45,15,41,46,16],[6,151,121,14,152,122],[6,75,47,34,76,48],[46,54,24,10,55,25],[2,45,15,64,46,16],[17,152,122,4,153,123],[29,74,46,14,75,47],[49,54,24,10,55,25],[24,45,15,46,46,16],[4,152,122,18,153,123],[13,74,46,32,75,47],[48,54,24,14,55,25],[42,45,15,32,46,16],[20,147,117,4,148,118],[40,75,47,7,76,48],[43,54,24,22,55,25],[10,45,15,67,46,16],[19,148,118,6,149,119],[18,75,47,31,76,48],[34,54,24,34,55,25],[20,45,15,61,46,16]],j.getRSBlocks=function(a,b){var c=j.getRsBlockTable(a,b);if(void 0==c)throw new Error("bad rs block @ typeNumber:"+a+"/errorCorrectLevel:"+b);for(var d=c.length/3,e=[],f=0;d>f;f++)for(var g=c[3*f+0],h=c[3*f+1],i=c[3*f+2],k=0;g>k;k++)e.push(new j(h,i));return e},j.getRsBlockTable=function(a,b){switch(b){case d.L:return j.RS_BLOCK_TABLE[4*(a-1)+0];case d.M:return j.RS_BLOCK_TABLE[4*(a-1)+1];case d.Q:return j.RS_BLOCK_TABLE[4*(a-1)+2];case d.H:return j.RS_BLOCK_TABLE[4*(a-1)+3];default:return void 0}},k.prototype={get:function(a){var b=Math.floor(a/8);return 1==(1&this.buffer[b]>>>7-a%8)},put:function(a,b){for(var c=0;b>c;c++)this.putBit(1==(1&a>>>b-c-1))},getLengthInBits:function(){return this.length},putBit:function(a){var b=Math.floor(this.length/8);this.buffer.length<=b&&this.buffer.push(0),a&&(this.buffer[b]|=128>>>this.length%8),this.length++}};var l=[[17,14,11,7],[32,26,20,14],[53,42,32,24],[78,62,46,34],[106,84,60,44],[134,106,74,58],[154,122,86,64],[192,152,108,84],[230,180,130,98],[271,213,151,119],[321,251,177,137],[367,287,203,155],[425,331,241,177],[458,362,258,194],[520,412,292,220],[586,450,322,250],[644,504,364,280],[718,560,394,310],[792,624,442,338],[858,666,482,382],[929,711,509,403],[1003,779,565,439],[1091,857,611,461],[1171,911,661,511],[1273,997,715,535],[1367,1059,751,593],[1465,1125,805,625],[1528,1190,868,658],[1628,1264,908,698],[1732,1370,982,742],[1840,1452,1030,790],[1952,1538,1112,842],[2068,1628,1168,898],[2188,1722,1228,958],[2303,1809,1283,983],[2431,1911,1351,1051],[2563,1989,1423,1093],[2699,2099,1499,1139],[2809,2213,1579,1219],[2953,2331,1663,1273]],o=function(){var a=function(a,b){this._el=a,this._htOption=b};return a.prototype.draw=function(a){function g(a,b){var c=document.createElementNS("http://www.w3.org/2000/svg",a);for(var d in b)b.hasOwnProperty(d)&&c.setAttribute(d,b[d]);return c}var b=this._htOption,c=this._el,d=a.getModuleCount();Math.floor(b.width/d),Math.floor(b.height/d),this.clear();var h=g("svg",{viewBox:"0 0 "+String(d)+" "+String(d),width:"100%",height:"100%",fill:b.colorLight});h.setAttributeNS("http://www.w3.org/2000/xmlns/","xmlns:xlink","http://www.w3.org/1999/xlink"),c.appendChild(h),h.appendChild(g("rect",{fill:b.colorDark,width:"1",height:"1",id:"template"}));for(var i=0;d>i;i++)for(var j=0;d>j;j++)if(a.isDark(i,j)){var k=g("use",{x:String(i),y:String(j)});k.setAttributeNS("http://www.w3.org/1999/xlink","href","#template"),h.appendChild(k)}},a.prototype.clear=function(){for(;this._el.hasChildNodes();)this._el.removeChild(this._el.lastChild)},a}(),p="svg"===document.documentElement.tagName.toLowerCase(),q=p?o:m()?function(){function a(){this._elImage.src=this._elCanvas.toDataURL("image/png"),this._elImage.style.display="block",this._elCanvas.style.display="none"}function d(a,b){var c=this;if(c._fFail=b,c._fSuccess=a,null===c._bSupportDataURI){var d=document.createElement("img"),e=function(){c._bSupportDataURI=!1,c._fFail&&_fFail.call(c)},f=function(){c._bSupportDataURI=!0,c._fSuccess&&c._fSuccess.call(c)};return d.onabort=e,d.onerror=e,d.onload=f,d.src="data:image/gif;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAHElEQVQI12P4//8/w38GIAXDIBKE0DHxgljNBAAO9TXL0Y4OHwAAAABJRU5ErkJggg==",void 0}c._bSupportDataURI===!0&&c._fSuccess?c._fSuccess.call(c):c._bSupportDataURI===!1&&c._fFail&&c._fFail.call(c)}if(this._android&&this._android<=2.1){var b=1/window.devicePixelRatio,c=CanvasRenderingContext2D.prototype.drawImage;CanvasRenderingContext2D.prototype.drawImage=function(a,d,e,f,g,h,i,j){if("nodeName"in a&&/img/i.test(a.nodeName))for(var l=arguments.length-1;l>=1;l--)arguments[l]=arguments[l]*b;else"undefined"==typeof j&&(arguments[1]*=b,arguments[2]*=b,arguments[3]*=b,arguments[4]*=b);c.apply(this,arguments)}}var e=function(a,b){this._bIsPainted=!1,this._android=n(),this._htOption=b,this._elCanvas=document.createElement("canvas"),this._elCanvas.width=b.width,this._elCanvas.height=b.height,a.appendChild(this._elCanvas),this._el=a,this._oContext=this._elCanvas.getContext("2d"),this._bIsPainted=!1,this._elImage=document.createElement("img"),this._elImage.style.display="none",this._el.appendChild(this._elImage),this._bSupportDataURI=null};return e.prototype.draw=function(a){var b=this._elImage,c=this._oContext,d=this._htOption,e=a.getModuleCount(),f=d.width/e,g=d.height/e,h=Math.round(f),i=Math.round(g);b.style.display="none",this.clear();for(var j=0;e>j;j++)for(var k=0;e>k;k++){var l=a.isDark(j,k),m=k*f,n=j*g;c.strokeStyle=l?d.colorDark:d.colorLight,c.lineWidth=1,c.fillStyle=l?d.colorDark:d.colorLight,c.fillRect(m,n,f,g),c.strokeRect(Math.floor(m)+.5,Math.floor(n)+.5,h,i),c.strokeRect(Math.ceil(m)-.5,Math.ceil(n)-.5,h,i)}this._bIsPainted=!0},e.prototype.makeImage=function(){this._bIsPainted&&d.call(this,a)},e.prototype.isPainted=function(){return this._bIsPainted},e.prototype.clear=function(){this._oContext.clearRect(0,0,this._elCanvas.width,this._elCanvas.height),this._bIsPainted=!1},e.prototype.round=function(a){return a?Math.floor(1e3*a)/1e3:a},e}():function(){var a=function(a,b){this._el=a,this._htOption=b};return a.prototype.draw=function(a){for(var b=this._htOption,c=this._el,d=a.getModuleCount(),e=Math.floor(b.width/d),f=Math.floor(b.height/d),g=['<table style="border:0;border-collapse:collapse;">'],h=0;d>h;h++){g.push("<tr>");for(var i=0;d>i;i++)g.push('<td style="border:0;border-collapse:collapse;padding:0;margin:0;width:'+e+"px;height:"+f+"px;background-color:"+(a.isDark(h,i)?b.colorDark:b.colorLight)+';"></td>');g.push("</tr>")}g.push("</table>"),c.innerHTML=g.join("");var j=c.childNodes[0],k=(b.width-j.offsetWidth)/2,l=(b.height-j.offsetHeight)/2;k>0&&l>0&&(j.style.margin=l+"px "+k+"px")},a.prototype.clear=function(){this._el.innerHTML=""},a}();QRCode=function(a,b){if(this._htOption={width:256,height:256,typeNumber:4,colorDark:"#000000",colorLight:"#ffffff",correctLevel:d.H},"string"==typeof b&&(b={text:b}),b)for(var c in b)this._htOption[c]=b[c];"string"==typeof a&&(a=document.getElementById(a)),this._android=n(),this._el=a,this._oQRCode=null,this._oDrawing=new q(this._el,this._htOption),this._htOption.text&&this.makeCode(this._htOption.text)},QRCode.prototype.makeCode=function(a){this._oQRCode=new b(r(a,this._htOption.correctLevel),this._htOption.correctLevel),this._oQRCode.addData(a),this._oQRCode.make(),this._el.title=a,this._oDrawing.draw(this._oQRCode),this.makeImage()},QRCode.prototype.makeImage=function(){"function"==typeof this._oDrawing.makeImage&&(!this._android||this._android>=3)&&this._oDrawing.makeImage()},QRCode.prototype.clear=function(){this._oDrawing.clear()},QRCode.CorrectLevel=d}();
-</script>
+
 <style>
   :root{
     --canvas:#F3F6F1;
@@ -185,6 +182,8 @@ var QRCode;!function(){function a(a){this.mode=c.MODE_8BIT_BYTE,this.data=a,this
   .dev-badge{font-family:var(--font-body);font-size:10.5px;padding:3px 9px;border-radius:999px;text-transform:none;font-weight:700;}
   .dev-total{background:var(--red);color:#fff;}
   .dev-parcial{background:var(--gold);color:#3a2c00;}
+  .estado-completada{background:var(--teal-light);color:var(--teal);font-weight:700;font-size:10.5px;padding:3px 9px;border-radius:999px;}
+  .estado-pendiente{background:#FFF3D2;color:#8A6300;font-weight:700;font-size:10.5px;padding:3px 9px;border-radius:999px;cursor:pointer;border:none;}
   .promo-breakdown{font-family:var(--font-mono);font-size:10.5px;color:var(--teal);margin-top:2px;}
   .promo-breakdown s{color:var(--ink-dim);}
   .icon-chip{
@@ -247,6 +246,11 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
   tr.ticket-row-a{background:#fff;}
   tr.ticket-row-b{background:var(--canvas);}
   tr.ticket-spacer td{height:18px;border:none;background:transparent;padding:0;}
+  th.sortable{cursor:pointer;user-select:none;white-space:nowrap;}
+  th.sortable:hover{background:var(--canvas);color:var(--coral);}
+  th.sortable.sort-active{color:var(--coral);}
+  th.sortable .sort-icon{display:inline-block;margin-left:4px;font-size:10px;opacity:0.4;vertical-align:middle;}
+  th.sortable.sort-active .sort-icon{opacity:1;}
   td.num,th.num{text-align:right;font-family:var(--font-mono);}
 
   table.talla-editor td, table.talla-editor th{padding:6px 8px;}
@@ -328,12 +332,13 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <div id="toast" class="toast"></div>
 
 <script>
-const APP_VERSION = "1.0";
+const APP_VERSION = "2.2";
 const STORAGE_KEY = "zapateria-data-v2";
 let state = null;
 let currentTab = "almacen";
 let filterText = "";
 let historyFilter = "";
+let historyOrden = "fecha_desc";
 let almacenGeneroFiltro = "todos";
 let historyPeriod = "todos";
 let historyFrom = null;
@@ -353,8 +358,11 @@ let cart = [];
 let cartDescuentoActivo = false;
 let cartDescuentoTipo = "porcentaje";
 let cartDescuentoValor = 0;
-let cartDescuentoAmbito = "factura"; // 'factura' | 'articulo'
-let cartDescuentoLineaIndex = null;
+// El descuento de factura es siempre global (sobre el total).
+// Los descuentos por artículo se gestionan ahora en cada línea del carrito.
+
+let ventasTab = "catalogo"; // 'catalogo' | 'otro'
+let otroNombre = ""; let otroModelo = ""; let otroTalla = ""; let otroPrecio = ""; let otroCantidad = 1;
 let cartMetodoPago = "efectivo";
 let chartRefs = { monthly:null, top:null, brand:null };
 const PALETTE = ['#FFB020','#3ED07A','#5B8DEF','#E85D75','#B98CE0','#8A93A3','#F2A65A','#43BFB0'];
@@ -362,7 +370,20 @@ const MONTH_NAMES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct'
 
 function defaultState(){
   return {
-    settings: { ivaRate:21, tallaMin:35, tallaMax:46, nombreTienda:"Mi Zapatería", nif:"", serieFactura:"T", serieDevolucion:"D", autoImprimir:true, cajonHabilitado:false, demoSeeded:false },
+    settings: {
+      ivaRate:21, tallaMin:35, tallaMax:46,
+      nombreTienda:"Mi Zapatería", nif:"", serieFactura:"T", serieDevolucion:"D",
+      autoImprimir:true, cajonHabilitado:false, demoSeeded:false,
+      // Datos de contacto de la tienda
+      direccion:"", telefono:"", email:"", web:"",
+      // Control de qué aparece en el ticket
+      ticket_nombre:true, ticket_nif:true, ticket_direccion:true,
+      ticket_telefono:true, ticket_email:true, ticket_web:true,
+      ticket_numero:true, ticket_formaPago:true,
+      ticket_desgloseIva:true, ticket_descuentos:true, ticket_promos:true,
+      // Texto libre
+      ticket_cabecera:"", ticket_pie:"¡Gracias por su compra!"
+    },
     products: [],
     sales: [],
     tickets: [],
@@ -370,9 +391,32 @@ function defaultState(){
   };
 }
 
+// Sistema de almacenamiento: usa localStorage (estándar en todos los navegadores,
+// incluido Chrome en Android) con fallback al storage del entorno de Claude si está disponible.
+// Esto corrige el bug por el que los datos (fotos, productos, ventas) desaparecían
+// al cerrar la app instalada en Android.
+const storage = {
+  get(key){
+    try{ const v = localStorage.getItem(key); return v ? {value:v} : null; }
+    catch(e){ return null; }
+  },
+  set(key, value){
+    try{ localStorage.setItem(key, value); return true; }
+    catch(e){
+      // localStorage lleno (puede pasar con muchas fotos): avisar al usuario
+      console.error('Error guardando datos (localStorage lleno?):', e);
+      return false;
+    }
+  },
+  remove(key){
+    try{ localStorage.removeItem(key); return true; }
+    catch(e){ return false; }
+  }
+};
+
 async function loadState(){
   try{
-    const res = await window.storage.get(STORAGE_KEY, false);
+    const res = storage.get(STORAGE_KEY);
     state = res && res.value ? JSON.parse(res.value) : defaultState();
   }catch(e){
     state = defaultState();
@@ -384,8 +428,16 @@ async function loadState(){
   if(state.settings.autoImprimir===undefined) state.settings.autoImprimir=true;
   if(state.settings.cajonHabilitado===undefined) state.settings.cajonHabilitado=false;
   if(state.settings.demoSeeded===undefined) state.settings.demoSeeded=false;
+  // Migración: campos de contacto y configuración del ticket
+  const ticketDefaults = { direccion:"", telefono:"", email:"", web:"",
+    ticket_nombre:true, ticket_nif:true, ticket_direccion:true, ticket_telefono:true,
+    ticket_email:true, ticket_web:true, ticket_numero:true, ticket_formaPago:true,
+    ticket_desgloseIva:true, ticket_descuentos:true, ticket_promos:true,
+    ticket_cabecera:"", ticket_pie:"¡Gracias por su compra!" };
+  Object.keys(ticketDefaults).forEach(k=>{ if(state.settings[k]===undefined) state.settings[k]=ticketDefaults[k]; });
   if(!state.tickets) state.tickets = [];
   if(!state.devoluciones) state.devoluciones = [];
+  state.tickets.forEach(t=>{ if(!t.estadoPago) t.estadoPago='completada'; if(t.datosCliente===undefined) t.datosCliente=null; });
   intentarReconectarCajon();
   document.getElementById("storeName").textContent = (state.settings.nombreTienda || "Mi Zapatería").toUpperCase();
   const verTag = document.getElementById("appVersionTag");
@@ -397,9 +449,9 @@ async function loadState(){
   render();
 }
 
-async function saveState(){
-  try{ await window.storage.set(STORAGE_KEY, JSON.stringify(state), false); }
-  catch(e){ console.error("Error guardando datos", e); }
+function saveState(){
+  const ok = storage.set(STORAGE_KEY, JSON.stringify(state));
+  if(!ok) showToast("⚠️ No se pudo guardar. Puede que el almacenamiento esté lleno. Descarga una copia de seguridad.", "err");
 }
 
 function startOfWeek(d){
@@ -426,6 +478,16 @@ function matchesPeriodo(fechaIso, periodo, from, to, fechaEspecifica){
   if(periodo==='mes_pasado'){
     const prev = new Date(now.getFullYear(), now.getMonth()-1, 1);
     return d.getFullYear()===prev.getFullYear() && d.getMonth()===prev.getMonth();
+  }
+  if(periodo==='trimestre'){
+    const t=Math.floor(now.getMonth()/3);
+    return d.getFullYear()===now.getFullYear() && Math.floor(d.getMonth()/3)===t;
+  }
+  if(periodo==='trimestre_pasado'){
+    const tNow=Math.floor(now.getMonth()/3);
+    const tPrev=tNow===0?3:tNow-1;
+    const aPrev=tNow===0?now.getFullYear()-1:now.getFullYear();
+    return d.getFullYear()===aPrev && Math.floor(d.getMonth()/3)===tPrev;
   }
   if(periodo==='anio'){ return d.getFullYear()===now.getFullYear(); }
   if(periodo==='anio_pasado'){ return d.getFullYear()===now.getFullYear()-1; }
@@ -555,6 +617,23 @@ function showToast(msg, type){
 // ---------------- RENDER ----------------
 let lastRenderedTab = null;
 
+function renderSinScroll(){
+  // Estrategia: actualizar solo los checkboxes en el DOM actual sin re-renderizar la página completa.
+  // Esto evita completamente el salto de scroll.
+  const modelChecks = document.querySelectorAll('[data-modelkey]');
+  const sel = getSelectedModelKeys();
+  if(modelChecks.length > 0){
+    modelChecks.forEach(cb=>{
+      cb.checked = sel.includes(cb.dataset.modelkey);
+    });
+    // Redibujar solo las gráficas que dependen de la selección
+    try{ initCharts(); }catch(e){}
+    return;
+  }
+  // Fallback: re-render normal si los checkboxes aún no existen en el DOM
+  render();
+}
+
 function render(){
   document.querySelectorAll(".tabs button").forEach(b=> b.classList.toggle("active", b.dataset.tab===currentTab));
 
@@ -670,45 +749,168 @@ function renderAlmacen(){
 function renderVentas(){
   const totals = cartTotals();
   const rowsCart = cart.map((line,i)=>{
+    // --- Artículo manual ---
+    if(line.productId === '__manual__'){
+      const dl = line.descuento || {activo:false,tipo:'porcentaje',valor:0};
+      const pvp = line.precioManualConIva || 0;
+      let totalLinea = pvp * line.cantidad;
+      if(dl.activo && dl.valor>0){
+        totalLinea = dl.tipo==='porcentaje' ? totalLinea*(1-dl.valor/100) : Math.max(0, totalLinea-dl.valor);
+      }
+      return `
+      <tr>
+        <td>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:18px;">✏️</span>
+            <div>
+              <div style="font-weight:700;">${escapeHtml(line.marcaManual)}</div>
+              <div style="font-size:11px;color:var(--ink-dim);">${escapeHtml(line.modeloManual)}</div>
+            </div>
+          </div>
+        </td>
+        <td class="num">${escapeHtml(line.tallaManual)}</td>
+        <td class="num"><input type="number" min="1" value="${line.cantidad}" style="width:52px" onchange="cart[${i}].cantidad=parseInt(this.value)||1; render()"></td>
+        <td class="num" style="white-space:nowrap;"><span style="font-weight:700;">${eur(pvp)}/ud</span></td>
+        <td class="num" style="font-weight:700;">${eur(totalLinea)}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <label style="display:flex;align-items:center;gap:4px;text-transform:none;font-size:12px;margin:0;cursor:pointer;">
+              <input type="checkbox" ${dl.activo?'checked':''} onchange="toggleDescuentoLinea(${i})" style="width:auto;margin:0;">
+              Dto.
+            </label>
+            ${dl.activo ? `
+              <select style="padding:4px 6px;font-size:12px;" onchange="setDescuentoLineaTipo(${i},this.value)">
+                <option value="porcentaje" ${dl.tipo==='porcentaje'?'selected':''}>%</option>
+                <option value="importe" ${dl.tipo==='importe'?'selected':''}>€</option>
+              </select>
+              <input type="number" min="0" step="0.5" value="${dl.valor}" style="width:56px;padding:4px 6px;font-size:12px;" onchange="setDescuentoLineaValor(${i},this.value)">
+            ` : ""}
+            <button class="btn small danger" onclick="removeFromCart(${i})">✕</button>
+          </div>
+        </td>
+      </tr>`;
+    }
+
+    // --- Artículo del catálogo ---
     const p = state.products.find(x=>x.id===line.productId);
     if(!p) return "";
     const info = tallaInfo(p, line.talla);
-    const base = precioBaseConPromo(p);
-    const unitConIva = precioConIVA(base);
     const esBolso = (p.tipoArticulo||'zapatos')==='bolsos';
     const tallaOpciones = tallasParaTipo(p.tipoArticulo||'zapatos').filter(t=> tallaInfo(p,t).stock>0 || String(t)===String(line.talla));
+
+    // Precio por unidad: base con promo del producto, y luego aplicar el descuento manual de la línea
+    const baseConPromo = precioBaseConPromo(p);
+    const dl = line.descuento || {activo:false,tipo:'porcentaje',valor:0};
+    const pvpPromoConIva = precioConIVA(baseConPromo);
+    let totalLinea;
+    if(dl.activo && dl.valor>0){
+      let pvpLineaTotal = pvpPromoConIva * line.cantidad;
+      if(dl.tipo==='porcentaje') pvpLineaTotal = pvpLineaTotal * (1-dl.valor/100);
+      else pvpLineaTotal = Math.max(0, pvpLineaTotal - dl.valor);
+      totalLinea = pvpLineaTotal;
+    } else {
+      totalLinea = pvpPromoConIva * line.cantidad;
+    }
+    const unitConIva = totalLinea / line.cantidad;
+
+    // Desglose visual de precios
+    const precioOrigIva = precioConIVA(p.precioVenta);
+    const precioPromoIva = precioConIVA(baseConPromo);
+    let precioInfo = `<span style="font-weight:700;">${eur(unitConIva)}/ud</span>`;
+    if(p.promo && p.promo.activo){
+      precioInfo = `<span style="font-size:10px;color:var(--ink-dim);"><s>${eur(precioOrigIva)}</s></span> <span style="color:var(--teal);font-weight:700;">${eur(precioPromoIva)}/ud</span>`;
+    }
+    if(dl.activo && dl.valor>0){
+      precioInfo += ` <span style="font-size:10px;color:var(--gold-dark);">−dto</span> <span style="font-weight:700;color:var(--coral);">${eur(unitConIva)}/ud</span>`;
+    }
+
     return `
     <tr>
       <td>
         <div style="display:flex;align-items:center;gap:8px;">
           ${p.foto? `<img src="${p.foto}" style="width:28px;height:28px;border-radius:8px;object-fit:cover;flex-shrink:0;">` : ""}
-          ${escapeHtml(p.marca)}
+          <div>
+            <div style="font-weight:700;">${escapeHtml(p.marca)}</div>
+            <div style="font-size:11px;color:var(--ink-dim);">${escapeHtml(p.modelo)}</div>
+          </div>
         </div>
       </td>
-      <td>${escapeHtml(p.modelo)}${promoBreakdownLine(p)}</td>
       <td class="num">
         ${esBolso ? "Único" : `
         <select onchange="updateCartTalla(${i}, this.value)">
           ${tallaOpciones.map(t=>`<option value="${t}" ${String(t)===String(line.talla)?'selected':''}>${t}</option>`).join("")}
         </select>`}
       </td>
-      <td class="num"><input type="number" min="1" max="${info.stock + line.cantidad}" value="${line.cantidad}" style="width:60px" onchange="updateCartQty(${i}, this.value)"></td>
-      <td class="num">${eur(unitConIva)}</td>
-      <td class="num">${eur(unitConIva*line.cantidad)}</td>
-      <td class="num"><button class="btn small danger" onclick="removeFromCart(${i})">Quitar</button></td>
+      <td class="num"><input type="number" min="1" max="${info.stock + line.cantidad}" value="${line.cantidad}" style="width:52px" onchange="updateCartQty(${i}, this.value)"></td>
+      <td class="num" style="white-space:nowrap;">${precioInfo}</td>
+      <td class="num" style="font-weight:700;">${eur(totalLinea)}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <label style="display:flex;align-items:center;gap:4px;text-transform:none;font-size:12px;margin:0;white-space:nowrap;cursor:pointer;">
+            <input type="checkbox" ${dl.activo?'checked':''} onchange="toggleDescuentoLinea(${i})" style="width:auto;margin:0;">
+            Dto.
+          </label>
+          ${dl.activo ? `
+            <select style="padding:4px 6px;font-size:12px;" onchange="setDescuentoLineaTipo(${i},this.value)">
+              <option value="porcentaje" ${dl.tipo==='porcentaje'?'selected':''}>%</option>
+              <option value="importe" ${dl.tipo==='importe'?'selected':''}>€</option>
+            </select>
+            <input type="number" min="0" step="0.5" value="${dl.valor}" style="width:56px;padding:4px 6px;font-size:12px;" onchange="setDescuentoLineaValor(${i},this.value)">
+          ` : ""}
+          <button class="btn small danger" onclick="removeFromCart(${i})">✕</button>
+        </div>
+      </td>
     </tr>`;
   }).join("");
 
   const cartTable = cart.length? `
     <table>
-      <thead><tr><th>Marca</th><th>Modelo</th><th class="num">Talla</th><th class="num">Cant.</th><th class="num">P. unit (IVA inc.)</th><th class="num">Subtotal</th><th></th></tr></thead>
+      <thead><tr><th>Artículo</th><th class="num">Talla</th><th class="num">Cant.</th><th class="num">Precio/ud (IVA inc.)</th><th class="num">Total</th><th>Descuento</th></tr></thead>
       <tbody>${rowsCart}</tbody>
     </table>
   ` : `<div class="cart-empty">El carrito está vacío. Escanea un producto para añadirlo.</div>`;
 
-  const recent = [...state.sales].sort((a,b)=> b.fecha.localeCompare(a.fecha));
   const term = historyFilter.trim().toLowerCase();
-  const filtered = recent.filter(s=> (!term || (s.marca+" "+s.modelo).toLowerCase().includes(term)) && matchesHistoryPeriod(s.fecha));
+  const preFiltered = state.sales.filter(s=> (!term || (s.marca+" "+s.modelo).toLowerCase().includes(term)) && matchesHistoryPeriod(s.fecha));
+
+  // Ordenar por el criterio elegido, agrupando siempre las líneas del mismo ticket
+  // Para mantener la agrupación por ticket, ordenamos tickets y luego reconstruimos las líneas
+  const ticketIds = [...new Set(preFiltered.map(s=>s.ticketId))];
+  const ticketMap = {};
+  ticketIds.forEach(tid=>{
+    const lineas = preFiltered.filter(s=>s.ticketId===tid);
+    const t = state.tickets.find(x=>x.id===tid);
+    ticketMap[tid] = { lineas, ticket:t,
+      fecha: lineas[0]?.fecha || '',
+      numero: t?.numero || 0,
+      total: lineas.reduce((a,s)=>a+s.total,0),
+      beneficio: lineas.reduce((a,s)=>a+s.beneficio,0),
+      marca: lineas[0]?.marca || '',
+      modelo: lineas[0]?.modelo || ''
+    };
+  });
+
+  const ordenarTickets = (a,b) => {
+    const ta=ticketMap[a], tb=ticketMap[b];
+    switch(historyOrden){
+      case 'fecha_asc':      return ta.fecha.localeCompare(tb.fecha);
+      case 'fecha_desc':     return tb.fecha.localeCompare(ta.fecha);
+      case 'ticket_asc':     return ta.numero - tb.numero;
+      case 'ticket_desc':    return tb.numero - ta.numero;
+      case 'total_asc':      return ta.total - tb.total;
+      case 'total_desc':     return tb.total - ta.total;
+      case 'beneficio_asc':  return ta.beneficio - tb.beneficio;
+      case 'beneficio_desc': return tb.beneficio - ta.beneficio;
+      case 'marca_asc':      return ta.marca.localeCompare(tb.marca, 'es');
+      case 'marca_desc':     return tb.marca.localeCompare(ta.marca, 'es');
+      case 'modelo_asc':     return ta.modelo.localeCompare(tb.modelo, 'es');
+      case 'modelo_desc':    return tb.modelo.localeCompare(ta.modelo, 'es');
+      default:               return tb.fecha.localeCompare(ta.fecha);
+    }
+  };
+  ticketIds.sort(ordenarTickets);
+
+  const filtered = ticketIds.flatMap(tid => ticketMap[tid].lineas);
   const filteredTotal = filtered.reduce((a,s)=>a+s.total,0);
   const filteredBeneficio = filtered.reduce((a,s)=>a+s.beneficio,0);
   let prevTicketId = null;
@@ -717,15 +919,19 @@ function renderVentas(){
   filtered.slice(0,200).forEach(s=>{
     if(prevTicketId!==null && s.ticketId!==prevTicketId){
       grupoToggle = !grupoToggle;
-      rowsHistArr.push(`<tr class="ticket-spacer"><td colspan="10"></td></tr>`);
+      rowsHistArr.push(`<tr class="ticket-spacer"><td colspan="11"></td></tr>`);
     }
     prevTicketId = s.ticketId;
-    const estado = estadoDevolucion(s);
-    const badge = estado==='total' ? `<span class="dev-badge dev-total">Devuelta</span>`
-                : estado==='parcial' ? `<span class="dev-badge dev-parcial">Parcial</span>`
-                : "";
+    const estadoDev = estadoDevolucion(s);
+    const badgeDev = estadoDev==='total' ? `<span class="dev-badge dev-total">Devuelta</span>`
+                  : estadoDev==='parcial' ? `<span class="dev-badge dev-parcial">Parcial</span>`
+                  : "";
     const puedeDevolver = maxDevolvible(s)>0;
     const ticket = state.tickets.find(t=>t.id===s.ticketId);
+    const estadoPago = ticket ? (ticket.estadoPago||'completada') : 'completada';
+    const badgePago = estadoPago==='pendiente'
+      ? `<button class="estado-pendiente" onclick="openPendienteModal('${ticket.id}')" title="${ticket.datosCliente&&ticket.datosCliente.nombre ? '👤 '+ticket.datosCliente.nombre : 'Sin datos de cliente'}">⏳ Pendiente${ticket.datosCliente&&ticket.datosCliente.nombre?' — '+escapeHtml(ticket.datosCliente.nombre):''}</button>`
+      : `<span class="estado-completada">✅ Completada</span>`;
     rowsHistArr.push(`
     <tr class="${grupoToggle? 'ticket-row-b':'ticket-row-a'}">
       <td>${ticket? ticket.numSerieFactura : "—"}</td>
@@ -736,14 +942,26 @@ function renderVentas(){
       <td class="num">${s.cantidad}</td>
       <td class="num">${eur(s.total)}</td>
       <td class="num">${eur(s.beneficio)}</td>
-      <td>${badge}</td>
-      <td>${puedeDevolver? `<button class="btn small secondary" onclick="openDevolucionModal('${s.id}')">↩️ Devolver</button>` : ""}</td>
+      <td>${badgePago}</td>
+      <td>${badgeDev}</td>
+      <td>
+        ${estadoPago==='completada' && ticket ? `<button class="btn small" style="background:var(--gold);border-color:var(--gold);color:#3a2c00;" onclick="openPendienteModal('${ticket.id}')">⏳ Pend.</button>` : ""}
+        ${puedeDevolver? `<button class="btn small secondary" onclick="openDevolucionModal('${s.id}')">↩️ Dev.</button>` : ""}
+        ${ticket && !state.devoluciones.some(d=>d.ticketId===ticket.id) ? `<button class="btn small danger" onclick="eliminarTicket('${ticket.id}')">🗑️</button>` : ""}
+      </td>
     </tr>`);
   });
-  const rowsHist = rowsHistArr.join("") || `<tr><td colspan="10" style="text-align:center;color:var(--ink-dim);">No hay ventas para este filtro.</td></tr>`;
+  const rowsHist = rowsHistArr.join("") || `<tr><td colspan="11" style="text-align:center;color:var(--ink-dim);">No hay ventas para este filtro.</td></tr>`;
 
   return `
     <h2 class="section-title">Punto de venta</h2>
+
+    <div style="display:flex;gap:0;margin-bottom:12px;border-bottom:2px solid var(--line);">
+      <button onclick="ventasTab='catalogo';render();" style="border:none;background:none;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer;border-bottom:3px solid ${ventasTab==='catalogo'?'var(--coral)':'transparent'};color:${ventasTab==='catalogo'?'var(--coral)':'var(--ink-dim)'};margin-bottom:-2px;">🏷️ Del catálogo</button>
+      <button onclick="ventasTab='otro';render();" style="border:none;background:none;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer;border-bottom:3px solid ${ventasTab==='otro'?'var(--coral)':'transparent'};color:${ventasTab==='otro'?'var(--coral)':'var(--ink-dim)'};margin-bottom:-2px;">✏️ Otro</button>
+    </div>
+
+    ${ventasTab==='catalogo' ? `
     <div class="scan-console">
       <div class="scan-label">Escanea el código de barras de cada par para añadirlo a la venta</div>
       <div class="scan-row">
@@ -752,8 +970,43 @@ function renderVentas(){
           onkeydown="if(event.key==='Enter'){handleScanVenta(this.value); this.value='';}">
       </div>
     </div>
-
-    ${state.products.length===0 ? `<div class="note">Todavía no tienes productos en el almacén. Añade alguno en la pestaña "Almacén" antes de vender.</div>` : ""}
+    ${state.products.length===0 ? `<div class="note" style="margin-top:8px;">Todavía no tienes productos en el almacén. Añade alguno en la pestaña "Almacén" antes de vender.</div>` : `
+    <div class="toolbar" style="margin-top:8px;">
+      <select onchange="if(this.value) addManualToCart(this.value); this.value='';" style="min-width:260px;">
+        <option value="">Añadir manualmente (sin escáner)...</option>
+        ${state.products.map(p=>`<option value="${p.id}">${escapeHtml(p.marca)} — ${escapeHtml(p.modelo)}</option>`).join("")}
+      </select>
+    </div>`}
+    ` : `
+    <div class="ticket" style="margin-bottom:12px;max-width:480px;">
+      <div style="font-size:13px;color:var(--ink-dim);margin-bottom:14px;">Para ventas puntuales de artículos que no están en el catálogo todavía. No afecta al stock.</div>
+      <div class="field-row">
+        <div class="field" style="flex:2;">
+          <label>Nombre / Marca <span style="color:var(--red)">*</span></label>
+          <input type="text" id="otro-nombre" value="${escapeAttr(otroNombre)}" placeholder="Ej: Sandalia verano" style="width:100%" oninput="otroNombre=this.value">
+        </div>
+        <div class="field" style="flex:2;">
+          <label>Modelo (opcional)</label>
+          <input type="text" id="otro-modelo" value="${escapeAttr(otroModelo)}" placeholder="Ej: Modelo X" style="width:100%" oninput="otroModelo=this.value">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field" style="flex:1;">
+          <label>Talla / Nº (opcional)</label>
+          <input type="text" id="otro-talla" value="${escapeAttr(otroTalla)}" placeholder="Ej: 40" style="width:100%" oninput="otroTalla=this.value">
+        </div>
+        <div class="field" style="flex:1;">
+          <label>Cantidad</label>
+          <input type="number" id="otro-cantidad" min="1" value="${otroCantidad}" style="width:100%" oninput="otroCantidad=parseInt(this.value)||1">
+        </div>
+        <div class="field" style="flex:1.5;">
+          <label>Precio con IVA (€) <span style="color:var(--red)">*</span></label>
+          <input type="number" id="otro-precio" min="0" step="0.01" value="${otroPrecio}" placeholder="0,00" style="width:100%" oninput="otroPrecio=this.value">
+        </div>
+      </div>
+      <button class="btn accent" style="width:100%;margin-top:4px;" onclick="addOtroToCart()">➕ Añadir al carrito</button>
+    </div>
+    `}
 
     <div class="ticket" style="margin-bottom:10px;">
       ${cartTable}
@@ -761,33 +1014,19 @@ function renderVentas(){
       <div class="field-row" style="align-items:center;margin-top:14px;border-top:1px dashed var(--receipt-line);padding-top:12px;">
         <label style="display:flex;align-items:center;gap:8px;text-transform:none;margin:0;">
           <input type="checkbox" ${cartDescuentoActivo?'checked':''} onchange="cartDescuentoActivo=this.checked; render();" style="width:auto;">
-          Aplicar descuento puntual (cliente habitual, etc.)
+          Descuento sobre <b>toda la factura</b> (cliente habitual, etc.)
         </label>
         ${cartDescuentoActivo? `
-          <select onchange="cartDescuentoAmbito=this.value; cartDescuentoLineaIndex=null; render();">
-            <option value="factura" ${cartDescuentoAmbito==='factura'?'selected':''}>Sobre toda la factura</option>
-            <option value="articulo" ${cartDescuentoAmbito==='articulo'?'selected':''}>Sobre un artículo</option>
-          </select>
-          ${cartDescuentoAmbito==='articulo' ? `
-            <select onchange="cartDescuentoLineaIndex=this.value===''?null:parseInt(this.value); render();">
-              <option value="">Elige el artículo...</option>
-              ${cart.map((line,i)=>{
-                const p = state.products.find(x=>x.id===line.productId);
-                if(!p) return "";
-                return `<option value="${i}" ${cartDescuentoLineaIndex===i?'selected':''}>${escapeHtml(p.marca)} — ${escapeHtml(p.modelo)} (talla ${line.talla})</option>`;
-              }).join("")}
-            </select>
-          ` : ""}
           <select onchange="cartDescuentoTipo=this.value; render();">
             <option value="porcentaje" ${cartDescuentoTipo==='porcentaje'?'selected':''}>Porcentaje (%)</option>
             <option value="importe" ${cartDescuentoTipo==='importe'?'selected':''}>Importe fijo (€)</option>
           </select>
-          <input type="number" step="0.01" min="0" value="${cartDescuentoValor}" style="width:100px" onchange="cartDescuentoValor=parseFloat(this.value)||0; render();" placeholder="Valor">
+          <input type="number" step="0.01" min="0" value="${cartDescuentoValor}" style="width:90px" onchange="cartDescuentoValor=parseFloat(this.value)||0; render();" placeholder="Valor">
         ` : ""}
       </div>
       <div class="price-row" style="justify-content:flex-end;gap:22px;margin-top:12px;">
         <span>Subtotal: <b>${eur(totals.subtotal)}</b></span>
-        ${totals.descuentoImporte>0 ? `<span>Descuento${cartDescuentoActivo&&cartDescuentoAmbito==='articulo'?' (artículo)':''}: <b>-${eur(totals.descuentoImporte)}</b></span>` : ""}
+        ${totals.descuentoImporte>0 ? `<span style="color:var(--coral);">Dto. total: <b>-${eur(totals.descuentoImporte)}</b></span>` : ""}
         <span>IVA: <b>${eur(totals.iva)}</b></span>
         <span style="font-size:16px;">Total: <b>${eur(totals.total)}</b></span>
       </div>
@@ -799,21 +1038,14 @@ function renderVentas(){
             <option value="tarjeta" ${cartMetodoPago==='tarjeta'?'selected':''}>Tarjeta</option>
           </select>
         </label>
-        <button class="btn secondary" onclick="cart=[]; cartDescuentoActivo=false; cartDescuentoValor=0; cartDescuentoAmbito='factura'; cartDescuentoLineaIndex=null; render();">🗑️ Vaciar carrito</button>
+        <button class="btn secondary" onclick="cart=[]; cartDescuentoActivo=false; cartDescuentoValor=0; render();">🗑️ Vaciar carrito</button>
         <button class="btn accent" onclick="checkout()">💳 Cobrar</button>
       </div>` : ""}
     </div>
 
-    <div class="toolbar" style="margin-top:6px;">
-      <select onchange="if(this.value) addManualToCart(this.value); this.value='';" style="min-width:260px;">
-        <option value="">Añadir manualmente (sin escáner)...</option>
-        ${state.products.map(p=>`<option value="${p.id}">${escapeHtml(p.marca)} — ${escapeHtml(p.modelo)}</option>`).join("")}
-      </select>
-    </div>
-
     <h2 class="section-title" style="margin-top:30px;">Historial de ventas</h2>
     <div class="toolbar">
-      <input id="ventas-history-search" type="text" placeholder="Filtrar por marca o modelo..." value="${escapeAttr(historyFilter)}" oninput="historyFilter=this.value;render()" style="min-width:220px;">
+      <input id="ventas-history-search" type="text" placeholder="Filtrar por marca o modelo..." value="${escapeAttr(historyFilter)}" oninput="historyFilter=this.value;render()" style="min-width:200px;">
       <label style="margin:0;">Ver un día <input type="date" value="${historyFecha||''}" onchange="historyFecha=this.value; historyPeriod = this.value? 'dia_especifico' : 'todos'; render()" style="margin-left:4px;"></label>
       <select onchange="historyFecha=null; historyPeriod=this.value; render();" style="min-width:170px;">
         <option value="todos" ${historyPeriod==='todos'?'selected':''}>Todo el historial</option>
@@ -829,6 +1061,7 @@ function renderVentas(){
         <label style="margin:0;">Desde <input type="date" value="${historyFrom||''}" onchange="historyFrom=this.value;render()" style="margin-left:4px;"></label>
         <label style="margin:0;">Hasta <input type="date" value="${historyTo||''}" onchange="historyTo=this.value;render()" style="margin-left:4px;"></label>
       ` : ""}
+      ${state.tickets.length>0 ? `<button class="btn small danger" onclick="cancelarUltimaVenta()" title="Cancela y elimina la última venta registrada, reponiendo el stock">⚡ Cancelar última venta</button>` : ""}
     </div>
     <div class="price-row" style="margin-bottom:10px;">
       <span>Ventas en el filtro: <b>${filtered.length}</b></span>
@@ -836,7 +1069,32 @@ function renderVentas(){
       <span>Beneficio: <b>${eur(filteredBeneficio)}</b></span>
     </div>
     <table>
-      <thead><tr><th>Nº ticket</th><th>Fecha</th><th>Marca</th><th>Modelo</th><th class="num">Talla</th><th class="num">Cant.</th><th class="num">Total (IVA inc.)</th><th class="num">Beneficio</th><th>Estado</th><th></th></tr></thead>
+      <thead><tr>
+        ${[
+          ['ticket','🔢 Nº'],
+          ['fecha','📅 Fecha'],
+          ['marca','Marca'],
+          ['modelo','Modelo'],
+        ].map(([campo,label])=>{
+          const base = campo==='ticket' ? 'ticket' : campo;
+          const activo = historyOrden.startsWith(base);
+          const esAsc = historyOrden === base+'_asc';
+          const icono = activo ? (esAsc ? '▲' : '▼') : '⇅';
+          return `<th class="sortable${activo?' sort-active':''}" onclick="sortHistoryBy('${base}')">${label} <span class="sort-icon">${icono}</span></th>`;
+        }).join('')}
+        <th class="num">Talla</th>
+        <th class="num">Cant.</th>
+        ${[
+          ['total','💶 Total'],
+          ['beneficio','Beneficio'],
+        ].map(([campo,label])=>{
+          const activo = historyOrden.startsWith(campo);
+          const esAsc = historyOrden === campo+'_asc';
+          const icono = activo ? (esAsc ? '▲' : '▼') : '⇅';
+          return `<th class="num sortable${activo?' sort-active':''}" onclick="sortHistoryBy('${campo}')">${label} <span class="sort-icon">${icono}</span></th>`;
+        }).join('')}
+        <th>Pago</th><th>Dev.</th><th></th>
+      </tr></thead>
       <tbody>${rowsHist}</tbody>
     </table>
     ${filtered.length>200? `<div class="note" style="margin-top:10px;">Mostrando las 200 ventas más recientes del filtro. Afina la búsqueda o el rango de fechas para ver el resto.</div>`:""}
@@ -972,7 +1230,7 @@ function renderInformes(){
               <div class="modelo-checks">
                 ${modelos.map(k=>{
                   const nombreModelo = k.split(' — ').slice(1).join(' — ');
-                  return `<label class="model-check"><input type="checkbox" ${seleccionados.includes(k)?'checked':''} onchange="toggleModeloSeleccionado('${escapeAttr(k)}', this.checked)"> ${escapeHtml(nombreModelo)}</label>`;
+                  return `<label class="model-check"><input type="checkbox" data-modelkey="${escapeAttr(k)}" ${seleccionados.includes(k)?'checked':''} onchange="toggleModeloSeleccionado('${escapeAttr(k)}', this.checked)"> ${escapeHtml(nombreModelo)}</label>`;
                 }).join("")}
               </div>
             </details>`;
@@ -1019,49 +1277,28 @@ function renderInformes(){
     </div>
     ` : `<div class="empty-state">Aún no hay ventas registradas. Los gráficos aparecerán en cuanto registres la primera venta.</div>`}
 
-    <h3 class="sub-title">Facturación y registro (mismo algoritmo y estructura de campos que publica la AEAT)</h3>
+    <h3 class="sub-title">Facturación — registro de ventas</h3>
     <div class="note">
-      Cada cobro genera un <b>registro de facturación numerado correlativamente</b> (serie/número) con una huella SHA-256
-      calculada sobre la misma cadena de campos que la AEAT documenta para el "Registro de Alta":
-      <span style="font-family:var(--font-mono);font-size:11.5px;">IDEmisorFactura, NumSerieFactura, FechaExpedicionFactura, TipoFactura,
-      CuotaTotal, ImporteTotal, Huella del registro anterior y FechaHoraHusoGenRegistro</span>, encadenada exactamente igual
-      que exige el sistema <b>VeriFactu</b> (RD 1007/2023).
-      <br><br>
-      Aun así, <b>esto no es un sistema homologado ni certificado</b>. Para serlo de verdad falta: el resto de campos
-      obligatorios del XSD oficial (desglose de IVA por tipo y régimen, datos del destinatario, identificación del
-      sistema informático declarante...), la firma electrónica del registro, el envío por servicio web con certificado
-      digital (o la alternativa de conservación no-VeriFactu), y la declaración responsable del fabricante del software.
-      Nada de eso puede hacerlo ni certificarlo una página que corre solo en tu navegador.
-      <br><br>
-      El calendario vigente (tras el aplazamiento de finales de 2025) obliga a partir del <b>1 de enero de 2027 a sociedades</b>
-      y del <b>1 de julio de 2027 al resto de autónomos y empresas</b>. Antes de esas fechas, usa esta app como tu control
-      interno de almacén y ventas, y confirma con tu gestor o con un software ya homologado por la AEAT cuándo necesitas
-      dar el salto al cumplimiento certificado real.
-      <br><br>
-      Por eso mismo puedes <b>eliminar un ticket</b> desde la tabla de abajo si fue un error (repone el stock vendido):
-      en un sistema homologado de verdad no se podría borrar así, solo anular con otro registro — aquí sí, precisamente
-      porque esto no sustituye a ese cumplimiento certificado.
+      Registro numerado de todas las ventas. Puedes filtrar por periodo, reimprimir cualquier ticket o eliminarlo si fue un error.
     </div>
+    
     ${ticketsFiltrados.length? `
     <div class="toolbar">
       <button class="btn secondary" onclick="exportLedgerJSON()">Exportar registro (JSON)</button>
       <button class="btn secondary" onclick="exportLedgerCSV()">Exportar registro (CSV)</button>
     </div>
     <table>
-      <thead><tr><th>Serie/Nº</th><th>Tipo</th><th>Fecha</th><th class="num">Total</th><th>Descuento</th><th>Huella (hash)</th><th>Huella anterior</th><th></th></tr></thead>
+      <thead><tr><th>Serie/Nº</th><th>Fecha</th><th class="num">Total</th><th>Descuento</th><th>Pago</th><th></th></tr></thead>
       <tbody>
         ${[...ticketsFiltrados].sort((a,b)=>b.fecha.localeCompare(a.fecha)).slice(0,60).map(t=>`
           <tr>
             <td>${t.numSerieFactura}</td>
-            <td>${t.tipoFactura}</td>
             <td>${new Date(t.fecha).toLocaleString('es-ES')}</td>
             <td class="num">${eur(t.total)}</td>
             <td>${t.descuento? `-${eur(t.descuento.importe)}` : ""}</td>
-            <td style="font-family:var(--font-mono);font-size:11px;">${t.hash.slice(0,16)}…</td>
-            <td style="font-family:var(--font-mono);font-size:11px;">${t.prevHash? t.prevHash.slice(0,16)+'…' : '(primer registro)'}</td>
+            <td><span class="${(t.estadoPago||'completada')==='pendiente'?'estado-pendiente':'estado-completada'}">${(t.estadoPago||'completada')==='pendiente'?'⏳ Pendiente':'✅ Completada'}</span></td>
             <td>
               <button class="btn small secondary" onclick="abrirTicketImprimible('${t.id}')">🖨️ Ticket</button>
-              <button class="btn small secondary" onclick="openTicketQR('${t.id}')">Ver QR</button>
               <button class="btn small danger" onclick="eliminarTicket('${t.id}')">🗑️ Eliminar</button>
             </td>
           </tr>
@@ -1069,6 +1306,25 @@ function renderInformes(){
       </tbody>
     </table>
     ` : `<div class="empty-state">${state.tickets.length? 'Ningún ticket en el periodo seleccionado.' : 'Aún no se ha registrado ningún ticket.'}</div>`}
+
+    <h3 class="sub-title">Exportar informe a PDF</h3>
+    <div class="ticket" style="max-width:560px;">
+      <div style="margin-bottom:12px;font-size:13px;color:var(--ink-dim);">
+        Genera un PDF con el resumen de ventas, detalle de tickets y devoluciones del periodo que elijas.
+        Perfecto para la gestoría o para tus archivos.
+      </div>
+      <div class="field">
+        <label>Periodo del informe</label>
+        <select id="pdf-periodo" style="width:100%" onchange="pdfPeriodo=this.value; document.getElementById('pdf-rango').style.display=this.value==='personalizado'?'flex':'none';">
+          ${PERIODOS_PDF.map(p=>`<option value="${p.value}" ${pdfPeriodo===p.value?'selected':''}>${p.label}</option>`).join('')}
+        </select>
+      </div>
+      <div id="pdf-rango" class="field-row" style="display:${pdfPeriodo==='personalizado'?'flex':'none'};">
+        <div class="field"><label>Desde</label><input type="date" value="${pdfFrom||''}" onchange="pdfFrom=this.value" style="width:100%"></div>
+        <div class="field"><label>Hasta</label><input type="date" value="${pdfTo||''}" onchange="pdfTo=this.value" style="width:100%"></div>
+      </div>
+      <button class="btn accent" onclick="exportarPDF()">📄 Generar PDF</button>
+    </div>
 
     <h3 class="sub-title">Copia de seguridad y actualización</h3>
     <div class="ticket" style="max-width:560px;">
@@ -1086,6 +1342,15 @@ function renderInformes(){
       <div style="margin-top:12px;font-size:12px;color:var(--ink-dim);">
         Versión de la app: <b>v${APP_VERSION}</b>. Te recomiendo descargar una copia de vez en cuando (por ejemplo, al final de cada semana) por seguridad.
       </div>
+
+      <div style="border-top:2px dashed var(--red-light);margin:20px 0 16px;padding-top:16px;">
+        <div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:8px;">⚠️ Zona peligrosa</div>
+        <div style="font-size:13px;color:var(--ink-dim);margin-bottom:12px;">
+          Borra <b>absolutamente todos los datos</b>: productos, ventas, tickets, fotos y ajustes.
+          No se puede deshacer. Descarga una copia de seguridad antes si no quieres perder nada.
+        </div>
+        <button class="btn danger" onclick="borrarTodosLosDatos()">🗑️ Borrar todos los datos y empezar de cero</button>
+      </div>
     </div>
 
     <h3 class="sub-title">Ajustes</h3>
@@ -1097,6 +1362,18 @@ function renderInformes(){
       <div class="field">
         <label>NIF / CIF de la tienda</label>
         <input type="text" style="width:100%" value="${escapeAttr(state.settings.nif)}" placeholder="Ej. 12345678A" onchange="state.settings.nif=this.value.trim(); saveState()">
+      </div>
+      <div class="field">
+        <label>Dirección</label>
+        <input type="text" style="width:100%" value="${escapeAttr(state.settings.direccion||'')}" placeholder="Calle, número, ciudad..." onchange="state.settings.direccion=this.value; saveState()">
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Teléfono</label><input type="tel" style="width:100%" value="${escapeAttr(state.settings.telefono||'')}" placeholder="600 000 000" onchange="state.settings.telefono=this.value; saveState()"></div>
+        <div class="field"><label>Email</label><input type="email" style="width:100%" value="${escapeAttr(state.settings.email||'')}" placeholder="tienda@email.com" onchange="state.settings.email=this.value; saveState()"></div>
+      </div>
+      <div class="field">
+        <label>Web / Redes sociales</label>
+        <input type="text" style="width:100%" value="${escapeAttr(state.settings.web||'')}" placeholder="www.mitienda.com · @mitienda" onchange="state.settings.web=this.value; saveState()">
       </div>
       <div class="field">
         <label>Serie de factura</label>
@@ -1131,6 +1408,56 @@ function renderInformes(){
       </div>
     </div>
 
+    <h3 class="sub-title">Personalizar el ticket de compra</h3>
+    <div class="ticket" style="max-width:560px;">
+      <div class="note" style="margin-bottom:14px;">Elige qué aparece en el ticket que se entrega al cliente. Los cambios se aplican desde el siguiente ticket que imprimas.</div>
+
+      <label style="font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">Texto libre</label>
+      <div class="field" style="margin-top:6px;">
+        <label>Cabecera (arriba del todo, antes del nombre)</label>
+        <textarea rows="2" style="width:100%;padding:9px 12px;border:1.5px solid var(--line);border-radius:var(--radius-sm);font-family:var(--font-body);font-size:14px;resize:vertical;" placeholder="Ej: Bienvenido a nuestra tienda" onchange="state.settings.ticket_cabecera=this.value; saveState()">${escapeHtml(state.settings.ticket_cabecera||'')}</textarea>
+      </div>
+      <div class="field">
+        <label>Pie (abajo del todo)</label>
+        <textarea rows="2" style="width:100%;padding:9px 12px;border:1.5px solid var(--line);border-radius:var(--radius-sm);font-family:var(--font-body);font-size:14px;resize:vertical;" onchange="state.settings.ticket_pie=this.value; saveState()">${escapeHtml(state.settings.ticket_pie||'')}</textarea>
+      </div>
+
+      <label style="font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin-top:6px;display:block;">Datos de la tienda</label>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px;">
+        ${[
+          ['ticket_nombre','Nombre de la tienda'],
+          ['ticket_nif','NIF / CIF'],
+          ['ticket_direccion','Dirección'],
+          ['ticket_telefono','Teléfono'],
+          ['ticket_email','Email'],
+          ['ticket_web','Web / Redes sociales'],
+        ].map(([k,lbl])=>`
+          <label style="display:flex;align-items:center;gap:8px;text-transform:none;margin:0;font-size:13px;">
+            <input type="checkbox" ${state.settings[k]!==false?'checked':''} onchange="state.settings['${k}']=this.checked; saveState()" style="width:auto;">
+            ${lbl}
+          </label>`).join('')}
+      </div>
+
+      <label style="font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin-top:14px;display:block;">Información de la venta</label>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px;">
+        ${[
+          ['ticket_numero','Número de ticket'],
+          ['ticket_formaPago','Forma de pago (efectivo / tarjeta)'],
+          ['ticket_desgloseIva','Desglose de IVA (base imponible + IVA por separado)'],
+          ['ticket_descuentos','Descuentos aplicados'],
+          ['ticket_promos','Desglose de promociones por artículo'],
+        ].map(([k,lbl])=>`
+          <label style="display:flex;align-items:center;gap:8px;text-transform:none;margin:0;font-size:13px;">
+            <input type="checkbox" ${state.settings[k]!==false?'checked':''} onchange="state.settings['${k}']=this.checked; saveState()" style="width:auto;">
+            ${lbl}
+          </label>`).join('')}
+      </div>
+
+      <div style="margin-top:16px;">
+        <button class="btn secondary" onclick="abrirTicketImprimible(state.tickets.length?state.tickets[state.tickets.length-1].id:null, false)">👁️ Ver cómo queda el último ticket</button>
+      </div>
+    </div>
+
     <div class="note">
       Estos cálculos cubren precio de venta, margen e IVA repercutido, útiles para tu contabilidad del día a día.
       La tributación por <b>módulos (estimación objetiva)</b> en España se calcula con coeficientes fijados por Hacienda
@@ -1160,7 +1487,7 @@ let cajonPort = null;
 
 async function conectarCajon(){
   if(!navigator.serial){
-    alert("Tu navegador no soporta Web Serial (hace falta Chrome o Edge de escritorio). No funcionará dentro de este chat ni en Safari/móvil.");
+    showToast("Web Serial no disponible en este navegador. Necesitas Chrome o Edge de escritorio.", "err");
     return;
   }
   try{
@@ -1275,48 +1602,94 @@ function abrirTicketImprimible(ticketId, autoImprimir){
   const t = state.tickets.find(x=>x.id===ticketId);
   if(!t) return;
   const lineas = state.sales.filter(s=>s.ticketId===ticketId);
-  const nif = state.settings.nif || "";
-  const nombreTienda = state.settings.nombreTienda || "Mi Zapatería";
-  const qrText = `NIF:${nif||"SINNIF00X"}|FACTURA:${t.numSerieFactura}|FECHA:${t.fechaExpedicion}|TOTAL:${t.total.toFixed(2)}|HASH:${t.hash}`;
+  const cfg = state.settings;
 
+  // ---- Cabecera de la tienda ----
+  const cabeceraLibre = cfg.ticket_cabecera ? `<div class="r-center" style="font-size:11px;margin-bottom:4px;">${escapeHtml(cfg.ticket_cabecera)}</div>` : "";
+  const nombreLine = cfg.ticket_nombre!==false ? `<div class="r-center r-bold" style="font-size:14px;">${escapeHtml((cfg.nombreTienda||"Mi Zapatería").toUpperCase())}</div>` : "";
+  const nifLine    = cfg.ticket_nif!==false && cfg.nif ? `<div class="r-center">NIF: ${escapeHtml(cfg.nif)}</div>` : "";
+  const dirLine    = cfg.ticket_direccion!==false && cfg.direccion ? `<div class="r-center">${escapeHtml(cfg.direccion)}</div>` : "";
+  const telLine    = cfg.ticket_telefono!==false && cfg.telefono ? `<div class="r-center">Tel: ${escapeHtml(cfg.telefono)}</div>` : "";
+  const emailLine  = cfg.ticket_email!==false && cfg.email ? `<div class="r-center">${escapeHtml(cfg.email)}</div>` : "";
+  const webLine    = cfg.ticket_web!==false && cfg.web ? `<div class="r-center">${escapeHtml(cfg.web)}</div>` : "";
+
+  // ---- Artículos ----
   const lineasHTML = lineas.map(s=>{
-    const promo = s.promoTipo ? `
-      <div class="r-promo">PVP orig. <s>${eur(precioConIVA(s.precioOriginalUnit))}</s>/ud · Promo ${s.promoTipo==='porcentaje'?'-'+s.promoValor+'%':'-'+eur(s.promoValor)}</div>
-    ` : "";
-    return `
-      <div class="r-item">
+    const pvpOriginalConIva = precioConIVA(s.precioOriginalUnit);
+    const pvpTrasPromoConIva = precioConIVA(s.precioTrasPromoUnit);
+    const pvpFinalConIva = s.total / s.cantidad; // precio final por unidad con IVA
+
+    // Precio por unidad que se muestra en la línea principal
+    // Si hay algún descuento, mostramos el precio original tachado + el final
+    const hayPromo = cfg.ticket_promos!==false && s.promoTipo;
+    const hayDescManual = cfg.ticket_descuentos!==false && s.descManualActivo && s.descManualImporte>0;
+
+    // Línea principal: nombre + total de la línea
+    let lineaPrincipal;
+    if(hayPromo || hayDescManual){
+      // Si hay algún descuento, mostrar precio original tachado y precio final
+      lineaPrincipal = `<div class="r-item-row">
+          <span>Talla ${s.talla} × ${s.cantidad}</span>
+          <span><s style="color:#999;font-size:10px;">${eur(pvpOriginalConIva * s.cantidad)}</s> ${eur(s.total)}</span>
+        </div>`;
+    } else {
+      lineaPrincipal = `<div class="r-item-row"><span>Talla ${s.talla} × ${s.cantidad}</span><span>${eur(s.total)}</span></div>`;
+    }
+
+    // Desglose de promoción del almacén
+    const promoHTML = hayPromo ? `
+      <div class="r-promo" style="display:flex;justify-content:space-between;">
+        <span>Promo: <s>${eur(pvpOriginalConIva)}</s> ${s.promoTipo==='porcentaje'?'−'+s.promoValor+'%':'−'+eur(s.promoValor)}/ud</span>
+        <span style="color:#0E9384;">−${eur((pvpOriginalConIva - pvpTrasPromoConIva)*s.cantidad)}</span>
+      </div>` : "";
+
+    // Desglose del descuento manual
+    const descManualHTML = hayDescManual ? `
+      <div class="r-promo" style="display:flex;justify-content:space-between;">
+        <span>Descuento: ${s.descManualTipo==='porcentaje'?'−'+s.descManualValor+'%':'−'+eur(s.descManualValor)}</span>
+        <span style="color:#0E9384;">−${eur(s.descManualImporte)}</span>
+      </div>` : "";
+
+    return `<div class="r-item">
         <div class="r-item-name">${escapeHtml(s.marca)} ${escapeHtml(s.modelo)}</div>
-        <div class="r-item-row"><span>Talla ${s.talla} × ${s.cantidad}</span><span>${eur(s.total)}</span></div>
-        ${promo}
+        ${lineaPrincipal}
+        ${promoHTML}${descManualHTML}
       </div>`;
   }).join("");
 
-  const descuentoHTML = t.descuento ? `
-    <div class="r-row"><span>Subtotal antes de descuento</span><span>${eur(t.subtotal + t.descuento.importe)}</span></div>
-    <div class="r-row"><span>Descuento puntual (${t.descuento.tipo==='porcentaje'?t.descuento.valor+'%':eur(t.descuento.valor)}${t.descuento.ambito==='articulo'?', 1 artículo':''})</span><span>-${eur(t.descuento.importe)}</span></div>
-  ` : "";
+  // ---- Totales ----
+  const descuentoHTML = cfg.ticket_descuentos!==false && t.descuento ? `
+    <div class="r-row"><span>Subtotal</span><span>${eur(t.subtotal + t.descuento.importe)}</span></div>
+    <div class="r-row"><span>Dto. factura (${t.descuento.tipo==='porcentaje'?t.descuento.valor+'%':eur(t.descuento.valor)})</span><span>-${eur(t.descuento.importe)}</span></div>` : "";
+
+  const ivaHTML = cfg.ticket_desgloseIva!==false ? `
+    <div class="r-row"><span>Base imponible</span><span>${eur(t.subtotal)}</span></div>
+    <div class="r-row"><span>IVA (${cfg.ivaRate}%)</span><span>${eur(t.iva)}</span></div>` : "";
+
+  const formaPagoHTML = cfg.ticket_formaPago!==false ? `<div class="r-row"><span>Forma de pago</span><span>${metodoPagoLabel(t.metodoPago)}</span></div>` : "";
+  const numTicketHTML = cfg.ticket_numero!==false ? `<div class="r-row"><span>Ticket</span><span>${t.numSerieFactura}</span></div>` : "";
+
+  // ---- Pie ----
+  const pieHTML = cfg.ticket_pie ? `<div class="r-center" style="margin-top:8px;">${escapeHtml(cfg.ticket_pie)}</div>` : "";
 
   document.getElementById("modal-root").innerHTML = `
     <div class="modal-overlay" onclick="if(event.target===this) closeModal()">
       <div class="modal" style="max-width:400px;">
         <div id="receipt-printable" class="receipt">
-          <div class="r-center r-bold" style="font-size:14px;">${escapeHtml(nombreTienda.toUpperCase())}</div>
-          ${nif? `<div class="r-center">NIF: ${escapeHtml(nif)}</div>` : ""}
+          ${cabeceraLibre}
+          ${nombreLine}${nifLine}${dirLine}${telLine}${emailLine}${webLine}
           <hr>
-          <div class="r-row"><span>Ticket</span><span>${t.numSerieFactura}</span></div>
+          ${numTicketHTML}
           <div class="r-row"><span>Fecha</span><span>${new Date(t.fecha).toLocaleString('es-ES')}</span></div>
           <hr>
           ${lineasHTML}
           <hr>
           ${descuentoHTML}
-          <div class="r-row"><span>Base imponible</span><span>${eur(t.subtotal)}</span></div>
-          <div class="r-row"><span>IVA (${state.settings.ivaRate}%)</span><span>${eur(t.iva)}</span></div>
+          ${ivaHTML}
           <div class="r-row r-total"><span>TOTAL</span><span>${eur(t.total)}</span></div>
-          <div class="r-row"><span>Forma de pago</span><span>${metodoPagoLabel(t.metodoPago)}</span></div>
+          ${formaPagoHTML}
           <hr>
-          <div id="qr-holder-print" class="r-center" style="margin:10px 0;"></div>
-          <div class="r-center" style="font-size:10px;color:#555;">Huella: ${t.hash.slice(0,20)}…</div>
-          <div class="r-center" style="margin-top:10px;">¡Gracias por su compra!</div>
+          ${pieHTML}
         </div>
         <div class="modal-actions no-print" style="justify-content:center;margin-top:16px;">
           <button class="btn secondary" onclick="closeModal()">Cerrar</button>
@@ -1325,29 +1698,107 @@ function abrirTicketImprimible(ticketId, autoImprimir){
       </div>
     </div>
   `;
-  setTimeout(()=>{
-    const holder = document.getElementById("qr-holder-print");
-    if(holder && window.QRCode) new QRCode(holder, { text:qrText, width:120, height:120 });
-    if(autoImprimir){
-      // Pequeño margen para que el QR termine de dibujarse antes de capturarlo como imagen
-      setTimeout(()=>imprimirTicket(), 150);
-    }
-  }, 0);
+  if(autoImprimir) setTimeout(()=>imprimirTicket(), 200);
+}
+
+function openPendienteModal(ticketId){
+  const t = state.tickets.find(x=>x.id===ticketId);
+  if(!t) return;
+  const c = t.datosCliente || { nombre:'', telefono:'', dni:'', notas:'' };
+  document.getElementById("modal-root").innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this) closeModal()">
+      <div class="modal" style="max-width:420px;">
+        <h3>📋 Datos del cliente — ${t.numSerieFactura}</h3>
+        <div class="note" style="margin-bottom:14px;">
+          Rellena los datos del cliente para este pago pendiente. Se guardarán junto al ticket.
+        </div>
+        <div class="field"><label>Nombre del cliente</label>
+          <input type="text" id="pd-nombre" value="${escapeAttr(c.nombre)}" placeholder="Nombre y apellidos" style="width:100%">
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Teléfono</label>
+            <input type="tel" id="pd-telefono" value="${escapeAttr(c.telefono)}" placeholder="600 000 000" style="width:100%">
+          </div>
+          <div class="field"><label>DNI / NIF (opcional)</label>
+            <input type="text" id="pd-dni" value="${escapeAttr(c.dni)}" placeholder="12345678A" style="width:100%">
+          </div>
+        </div>
+        <div class="field"><label>Notas (plazo de pago, motivo, etc.)</label>
+          <textarea id="pd-notas" rows="3" placeholder="Ej: Paga el viernes, reserva de talla 42..." style="width:100%;padding:9px 12px;border:1.5px solid var(--line);border-radius:var(--radius-sm);font-family:var(--font-body);font-size:14px;resize:vertical;">${escapeHtml(c.notas)}</textarea>
+        </div>
+        <div class="modal-actions">
+          <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+          <button class="btn secondary" onclick="marcarCompletada('${ticketId}')">✅ Marcar como completada</button>
+          <button class="btn accent" style="background:var(--gold);border-color:var(--gold);color:#3a2c00;" onclick="guardarPendiente('${ticketId}')">💾 Guardar pendiente</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function guardarPendiente(ticketId){
+  const t = state.tickets.find(x=>x.id===ticketId);
+  if(!t) return;
+  t.estadoPago = 'pendiente';
+  t.datosCliente = {
+    nombre: document.getElementById('pd-nombre').value.trim(),
+    telefono: document.getElementById('pd-telefono').value.trim(),
+    dni: document.getElementById('pd-dni').value.trim(),
+    notas: document.getElementById('pd-notas').value.trim()
+  };
+  saveState();
+  closeModal();
+  render();
+  showToast(`Venta marcada como pendiente ✓`, "ok");
+}
+
+function marcarCompletada(ticketId){
+  const t = state.tickets.find(x=>x.id===ticketId);
+  if(!t) return;
+  t.estadoPago = 'completada';
+  saveState();
+  closeModal();
+  render();
+  showToast(`Venta marcada como completada ✓`, "ok");
 }
 
 function eliminarTicket(ticketId){
   const t = state.tickets.find(x=>x.id===ticketId);
   if(!t) return;
   const lineas = state.sales.filter(s=>s.ticketId===ticketId);
-
   const tieneDevoluciones = state.devoluciones.some(d=>d.ticketId===ticketId);
+
   if(tieneDevoluciones){
-    alert("Este ticket tiene devoluciones o garantías registradas sobre él, así que no se puede eliminar directamente (perderías ese rastro). Si fue un error, contacta con soporte o gestiónalo manualmente.");
+    document.getElementById("modal-root").innerHTML = `
+      <div class="modal-overlay" onclick="if(event.target===this) closeModal()">
+        <div class="modal" style="max-width:380px;">
+          <h3>⚠️ No se puede eliminar</h3>
+          <p>Este ticket tiene devoluciones o garantías registradas. Para no perder ese rastro no se puede borrar directamente.</p>
+          <div class="modal-actions" style="justify-content:center;">
+            <button class="btn accent" onclick="closeModal()">Entendido</button>
+          </div>
+        </div>
+      </div>`;
     return;
   }
 
-  if(!confirm(`¿Eliminar el ticket ${t.numSerieFactura} por ${eur(t.total)}? Esta acción no se puede deshacer: se repondrá el stock de los ${lineas.length} artículo(s) vendidos en él.`)) return;
+  // Usar modal propio en vez de confirm() — confirm() puede bloquearse en PWA Android
+  document.getElementById("modal-root").innerHTML = `
+    <div class="modal-overlay">
+      <div class="modal" style="max-width:380px;">
+        <h3>🗑️ Eliminar ticket</h3>
+        <p>¿Eliminar el ticket <b>${t.numSerieFactura}</b> por <b>${eur(t.total)}</b>?</p>
+        <p style="color:var(--ink-dim);font-size:13px;">Se repondrá el stock de ${lineas.length} artículo(s). Esta acción no se puede deshacer.</p>
+        <div class="modal-actions" style="justify-content:center;gap:12px;">
+          <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+          <button class="btn danger" onclick="confirmarEliminarTicket('${ticketId}')">🗑️ Sí, eliminar</button>
+        </div>
+      </div>
+    </div>`;
+}
 
+function confirmarEliminarTicket(ticketId){
+  const lineas = state.sales.filter(s=>s.ticketId===ticketId);
   lineas.forEach(s=>{
     const p = state.products.find(x=>x.id===s.productId);
     if(p){
@@ -1356,58 +1807,20 @@ function eliminarTicket(ticketId){
       p.tallas[s.talla].stock = (info.stock||0) + s.cantidad;
     }
   });
-
   state.sales = state.sales.filter(s=>s.ticketId!==ticketId);
   state.tickets = state.tickets.filter(x=>x.id!==ticketId);
-
   saveState();
+  closeModal();
   render();
   showToast("Ticket eliminado y stock repuesto ✓", "ok");
 }
 
-function openTicketQR(ticketId){
-  const t = state.tickets.find(x=>x.id===ticketId);
-  if(!t) return;
-  const nif = state.settings.nif || "SINNIF00X";
-  const qrText = `NIF:${nif}|FACTURA:${t.numSerieFactura}|FECHA:${t.fechaExpedicion}|TOTAL:${t.total.toFixed(2)}|HASH:${t.hash}`;
-  const lineasTicket = state.sales.filter(s=>s.ticketId===ticketId);
-  const lineasHTML = lineasTicket.map(s=>`
-    <div style="text-align:left;border-bottom:1px dashed var(--receipt-line);padding:8px 0;">
-      <div style="display:flex;justify-content:space-between;font-size:13px;">
-        <span>${escapeHtml(s.marca)} ${escapeHtml(s.modelo)} · talla ${s.talla} × ${s.cantidad}</span>
-        <b>${eur(s.total)}</b>
-      </div>
-      ${promoBreakdownFromSale(s)}
-    </div>
-  `).join("");
-  const descuentoLinea = t.descuento ? `
-    <div class="sale-summary" style="text-align:left;margin-bottom:10px;">
-      <div><span>Subtotal antes de descuento</span><span>${eur(t.subtotal + t.descuento.importe)}</span></div>
-      <div><span>Descuento puntual (${t.descuento.tipo==='porcentaje' ? t.descuento.valor+'%' : eur(t.descuento.valor)}${t.descuento.ambito==='articulo'?', sobre un artículo':', sobre la factura'})</span><span>-${eur(t.descuento.importe)}</span></div>
-    </div>` : "";
-  document.getElementById("modal-root").innerHTML = `
-    <div class="modal-overlay" onclick="if(event.target===this) closeModal()">
-      <div class="modal" style="max-width:460px;text-align:center;">
-        <h3>Factura ${t.numSerieFactura}</h3>
-        ${lineasHTML}
-        <div id="qr-holder" style="display:flex;justify-content:center;margin:14px 0;"></div>
-        ${descuentoLinea}
-        <div class="note" style="text-align:left;">
-          Código de verificación interno (no es el QR oficial de la sede electrónica de la AEAT). Codifica NIF,
-          serie/número de factura, fecha, total y huella.
-          <br><br>
-          <span style="font-family:var(--font-mono);font-size:10.5px;word-break:break-all;">${escapeHtml(t.dataString)}</span>
-        </div>
-        <div class="modal-actions" style="justify-content:center;">
-          <button class="btn secondary" onclick="closeModal()">Cerrar</button>
-        </div>
-      </div>
-    </div>
-  `;
-  setTimeout(()=>{
-    const holder = document.getElementById("qr-holder");
-    if(holder && window.QRCode) new QRCode(holder, { text:qrText, width:180, height:180 });
-  }, 0);
+// Cancela la venta más reciente del carrito actual si el cliente se arrepiente.
+// También permite cancelar cualquier ticket del historial de ventas.
+function cancelarUltimaVenta(){
+  if(state.tickets.length===0){ showToast("No hay ventas registradas.", "err"); return; }
+  const ultimoTicket = state.tickets[state.tickets.length-1];
+  eliminarTicket(ultimoTicket.id);
 }
 
 function exportLedgerJSON(){
@@ -1423,6 +1836,210 @@ function exportLedgerJSON(){
 // Exporta TODOS los datos de la tienda (productos, ventas, tickets, devoluciones y ajustes)
 // a un único archivo. Sirve para no perder nada al pasar a una versión nueva de la app,
 // o para mover los datos a otro dispositivo.
+function borrarTodosLosDatos(){
+  document.getElementById("modal-root").innerHTML = `
+    <div class="modal-overlay">
+      <div class="modal" style="max-width:380px;">
+        <h3 style="color:var(--red);">⚠️ Borrar todos los datos</h3>
+        <p>Se eliminarán <b>todos los productos, ventas, tickets, fotos y ajustes</b>.</p>
+        <p style="color:var(--ink-dim);font-size:13px;">Esta acción no se puede deshacer. Descarga una copia antes si no quieres perder nada.</p>
+        <div class="modal-actions" style="justify-content:center;gap:12px;">
+          <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+          <button class="btn danger" onclick="confirmarBorrarTodo()">🗑️ Sí, borrar todo</button>
+        </div>
+      </div>
+    </div>`;
+}
+function confirmarBorrarTodo(){
+  storage.remove(STORAGE_KEY);
+  state = defaultState();
+  saveState();
+  document.getElementById("storeName").textContent = (state.settings.nombreTienda || "Mi Zapatería").toUpperCase();
+  closeModal();
+  render();
+  showToast("Todos los datos eliminados. La app está lista para empezar.", "ok");
+}
+
+// ---------------- EXPORTACIÓN PDF DE INFORMES ----------------
+const PERIODOS_PDF = [
+  { value:'hoy',          label:'Hoy' },
+  { value:'ayer',         label:'Ayer' },
+  { value:'semana',       label:'Esta semana' },
+  { value:'semana_pasada',label:'Semana pasada' },
+  { value:'mes',          label:'Este mes' },
+  { value:'mes_pasado',   label:'Mes pasado' },
+  { value:'trimestre',    label:'Este trimestre' },
+  { value:'trimestre_pasado', label:'Trimestre pasado' },
+  { value:'anio',         label:'Este año' },
+  { value:'anio_pasado',  label:'Año pasado' },
+  { value:'personalizado',label:'Rango personalizado' },
+];
+
+let pdfPeriodo = 'mes';
+let pdfFrom = null;
+let pdfTo = null;
+
+function matchesPdfPeriod(fechaIso){
+  const d = new Date(fechaIso);
+  const now = new Date();
+  const mes = d.getMonth(), anio = d.getFullYear();
+  const nowMes = now.getMonth(), nowAnio = now.getFullYear();
+  if(pdfPeriodo==='hoy') return d.toDateString()===now.toDateString();
+  if(pdfPeriodo==='ayer'){ const y=new Date(now); y.setDate(y.getDate()-1); return d.toDateString()===y.toDateString(); }
+  if(pdfPeriodo==='semana'){ const sw=startOfWeek(now); return d>=sw; }
+  if(pdfPeriodo==='semana_pasada'){ const sw=startOfWeek(now); const sp=new Date(sw); sp.setDate(sp.getDate()-7); return d>=sp && d<sw; }
+  if(pdfPeriodo==='mes') return anio===nowAnio && mes===nowMes;
+  if(pdfPeriodo==='mes_pasado'){ const pm=new Date(nowAnio, nowMes-1,1); return anio===pm.getFullYear() && mes===pm.getMonth(); }
+  if(pdfPeriodo==='trimestre'){
+    const t = Math.floor(nowMes/3);
+    return anio===nowAnio && Math.floor(mes/3)===t;
+  }
+  if(pdfPeriodo==='trimestre_pasado'){
+    const tNow = Math.floor(nowMes/3);
+    const tPrev = tNow===0 ? 3 : tNow-1;
+    const aPrev = tNow===0 ? nowAnio-1 : nowAnio;
+    return anio===aPrev && Math.floor(mes/3)===tPrev;
+  }
+  if(pdfPeriodo==='anio') return anio===nowAnio;
+  if(pdfPeriodo==='anio_pasado') return anio===nowAnio-1;
+  if(pdfPeriodo==='personalizado'){
+    if(pdfFrom && d < new Date(pdfFrom+"T00:00:00")) return false;
+    if(pdfTo && d > new Date(pdfTo+"T23:59:59")) return false;
+    return true;
+  }
+  return true;
+}
+
+function exportarPDF(){
+  const salesPdf = state.sales.filter(s=>matchesPdfPeriod(s.fecha));
+  const ticketsPdf = state.tickets.filter(t=>matchesPdfPeriod(t.fecha));
+  const devsPdf = state.devoluciones.filter(d=>matchesPdfPeriod(d.fecha));
+
+  if(salesPdf.length===0 && ticketsPdf.length===0){
+    showToast("No hay datos en el periodo seleccionado.", "err"); return;
+  }
+
+  const totalVentas = salesPdf.reduce((a,s)=>a+s.total, 0);
+  const totalBeneficio = salesPdf.reduce((a,s)=>a+s.beneficio, 0);
+  const totalIva = salesPdf.reduce((a,s)=>a+s.iva, 0);
+  const totalBase = salesPdf.reduce((a,s)=>a+s.subtotal, 0);
+  const totalDev = devsPdf.filter(d=>d.motivo==='devolucion').reduce((a,d)=>a+d.importe, 0);
+  const totalGar = devsPdf.filter(d=>d.motivo==='garantia').reduce((a,d)=>a+d.importe, 0);
+  const ventasNetas = totalVentas - totalDev - totalGar;
+  const ticketsMedio = ticketsPdf.length ? totalVentas/ticketsPdf.length : 0;
+  const periodoLabel = PERIODOS_PDF.find(p=>p.value===pdfPeriodo)?.label || pdfPeriodo;
+  const rango = pdfPeriodo==='personalizado' ? ` (${pdfFrom||'…'} — ${pdfTo||'…'})` : '';
+  const nombreTienda = state.settings.nombreTienda || 'Mi Zapatería';
+  const nif = state.settings.nif || '';
+
+  // Ventas agrupadas por ticket
+  const filasPorTicket = ticketsPdf.map(t=>{
+    const lineas = salesPdf.filter(s=>s.ticketId===t.id);
+    const articulos = lineas.map(l=>`${l.marca} ${l.modelo} (${l.talla}) ×${l.cantidad}`).join(', ');
+    return `<tr>
+      <td>${t.numSerieFactura}</td>
+      <td>${new Date(t.fecha).toLocaleDateString('es-ES')}</td>
+      <td style="max-width:220px;white-space:normal;font-size:10px;">${escapeHtml(articulos)}</td>
+      <td style="text-align:right;">${eur(t.subtotal)}</td>
+      <td style="text-align:right;">${eur(t.iva)}</td>
+      <td style="text-align:right;">${eur(t.total)}</td>
+      <td>${metodoPagoLabel(t.metodoPago)}</td>
+      <td>${(t.estadoPago||'completada')==='pendiente'?'Pendiente':'Completada'}</td>
+    </tr>`;
+  }).join('');
+
+  // Devoluciones
+  const filasDevs = devsPdf.length ? devsPdf.map(d=>`<tr>
+    <td>${d.numSerie}</td>
+    <td>${new Date(d.fecha).toLocaleDateString('es-ES')}</td>
+    <td>${escapeHtml(d.marca)} ${escapeHtml(d.modelo)} (${d.talla})</td>
+    <td>${d.motivo==='garantia'?'Garantía':'Devolución'}</td>
+    <td>${d.cantidad}</td>
+    <td style="text-align:right;">${eur(d.importe)}</td>
+    <td>${d.reponerStock?'Sí':'No'}</td>
+  </tr>`).join('') : '<tr><td colspan="7" style="color:#999;text-align:center;">Sin devoluciones en este periodo</td></tr>';
+
+  const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Informe ${periodoLabel} — ${nombreTienda}</title>
+<style>
+  @page { size: A4; margin: 18mm 15mm; }
+  body { font-family: Arial, sans-serif; font-size: 11px; color: #111; margin: 0; }
+  h1 { font-size: 18px; margin: 0 0 2px; }
+  h2 { font-size: 13px; border-bottom: 2px solid #FF5A3C; padding-bottom: 4px; margin: 18px 0 8px; color: #FF5A3C; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+  .tienda { font-size: 13px; color: #555; }
+  .periodo { font-size: 12px; background: #FF5A3C; color: #fff; padding: 4px 10px; border-radius: 4px; }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
+  .kpi { border: 1px solid #ddd; border-radius: 6px; padding: 8px 10px; }
+  .kpi .lbl { font-size: 9px; text-transform: uppercase; color: #888; letter-spacing: .4px; }
+  .kpi .val { font-size: 15px; font-weight: bold; margin-top: 2px; }
+  .kpi.verde .val { color: #0E9384; }
+  table { width: 100%; border-collapse: collapse; font-size: 10px; }
+  th { background: #f5f5f5; padding: 5px 6px; text-align: left; border-bottom: 1px solid #ccc; font-size: 9px; text-transform: uppercase; }
+  td { padding: 4px 6px; border-bottom: 1px solid #eee; }
+  tr:nth-child(even) td { background: #fafafa; }
+  .footer { margin-top: 20px; font-size: 9px; color: #aaa; border-top: 1px solid #eee; padding-top: 6px; }
+  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <h1>${escapeHtml(nombreTienda)}</h1>
+      <div class="tienda">${nif ? 'NIF: '+escapeHtml(nif)+'  ·  ' : ''}Generado: ${new Date().toLocaleString('es-ES')}</div>
+    </div>
+    <div class="periodo">📊 ${periodoLabel}${rango}</div>
+  </div>
+
+  <h2>Resumen</h2>
+  <div class="kpis">
+    <div class="kpi"><div class="lbl">Nº de tickets</div><div class="val">${ticketsPdf.length}</div></div>
+    <div class="kpi"><div class="lbl">Ventas totales (con IVA)</div><div class="val">${eur(totalVentas)}</div></div>
+    <div class="kpi verde"><div class="lbl">Beneficio</div><div class="val">${eur(totalBeneficio)}</div></div>
+    <div class="kpi"><div class="lbl">Ticket medio</div><div class="val">${eur(ticketsMedio)}</div></div>
+    <div class="kpi"><div class="lbl">Base imponible</div><div class="val">${eur(totalBase)}</div></div>
+    <div class="kpi"><div class="lbl">IVA repercutido (${state.settings.ivaRate}%)</div><div class="val">${eur(totalIva)}</div></div>
+    <div class="kpi"><div class="lbl">Devoluciones</div><div class="val">${eur(totalDev)}</div></div>
+    <div class="kpi verde"><div class="lbl">Ventas netas</div><div class="val">${eur(ventasNetas)}</div></div>
+  </div>
+
+  <h2>Detalle de ventas (${ticketsPdf.length} tickets)</h2>
+  <table>
+    <thead><tr><th>Nº</th><th>Fecha</th><th>Artículos</th><th style="text-align:right">Base</th><th style="text-align:right">IVA</th><th style="text-align:right">Total</th><th>Pago</th><th>Estado</th></tr></thead>
+    <tbody>${filasPorTicket}</tbody>
+    <tfoot><tr style="font-weight:bold;background:#f5f5f5;">
+      <td colspan="3">TOTAL</td>
+      <td style="text-align:right">${eur(totalBase)}</td>
+      <td style="text-align:right">${eur(totalIva)}</td>
+      <td style="text-align:right">${eur(totalVentas)}</td>
+      <td colspan="2"></td>
+    </tr></tfoot>
+  </table>
+
+  <h2>Devoluciones y garantías (${devsPdf.length})</h2>
+  <table>
+    <thead><tr><th>Nº</th><th>Fecha</th><th>Artículo</th><th>Tipo</th><th>Cant.</th><th style="text-align:right">Importe</th><th>Stock repuesto</th></tr></thead>
+    <tbody>${filasDevs}</tbody>
+  </table>
+
+  <div class="footer">
+    Informe generado por Mi Zapatería v${APP_VERSION} · ${periodoLabel}${rango}
+    · Solo para uso interno — no constituye factura oficial
+  </div>
+</body>
+</html>`;
+
+  const ventana = window.open("", "_blank", "width=900,height=700");
+  if(!ventana){ showToast("El navegador bloqueó la ventana. Permite las ventanas emergentes.", "err"); return; }
+  ventana.document.open();
+  ventana.document.write(html);
+  ventana.document.close();
+  setTimeout(()=>{ ventana.focus(); ventana.print(); }, 400);
+}
+
 function exportarCopiaSeguridad(){
   const copia = {
     _tipo: "copia-zapateria",
@@ -1454,25 +2071,22 @@ function importarCopiaSeguridad(inputEl){
       }
       const nProd = nuevoEstado.products.length;
       const nVentas = (nuevoEstado.sales||[]).length;
-      if(!confirm(`Vas a sustituir TODOS los datos actuales por los de la copia (${nProd} productos, ${nVentas} ventas). Los datos que tengas ahora se perderán. ¿Continuar?`)) {
-        inputEl.value = "";
-        return;
-      }
-      state = nuevoEstado;
-      // completar campos que pudieran faltar (misma lógica de migración que loadState)
-      if(!state.settings) state.settings = defaultState().settings;
-      if(state.settings.nif===undefined) state.settings.nif="";
-      if(state.settings.serieFactura===undefined) state.settings.serieFactura="T";
-      if(state.settings.serieDevolucion===undefined) state.settings.serieDevolucion="D";
-      if(state.settings.autoImprimir===undefined) state.settings.autoImprimir=true;
-      if(state.settings.cajonHabilitado===undefined) state.settings.cajonHabilitado=false;
-      if(!state.tickets) state.tickets = [];
-      if(!state.devoluciones) state.devoluciones = [];
-      if(!state.sales) state.sales = [];
-      saveState();
-      document.getElementById("storeName").textContent = (state.settings.nombreTienda || "Mi Zapatería").toUpperCase();
-      render();
-      showToast(`Copia restaurada: ${nProd} productos, ${nVentas} ventas ✓`, "ok");
+      // Guardar el estado a restaurar para usarlo desde el modal de confirmación
+      window.__pendingRestore = { nuevoEstado, inputEl, nProd, nVentas };
+      document.getElementById("modal-root").innerHTML = `
+        <div class="modal-overlay">
+          <div class="modal" style="max-width:380px;">
+            <h3>📂 Restaurar copia</h3>
+            <p>Vas a sustituir <b>todos los datos actuales</b> por los de la copia (<b>${nProd} productos, ${nVentas} ventas</b>).</p>
+            <p style="color:var(--ink-dim);font-size:13px;">Los datos que tengas ahora se perderán.</p>
+            <div class="modal-actions" style="justify-content:center;gap:12px;">
+              <button class="btn secondary" onclick="closeModal(); window.__pendingRestore=null;">Cancelar</button>
+              <button class="btn accent" onclick="confirmarRestaurarCopia()">📂 Sí, restaurar</button>
+            </div>
+          </div>
+        </div>`;
+      inputEl.value = "";
+      return; // el modal se encarga de continuar
     }catch(err){
       console.error(err);
       showToast("No se pudo leer el archivo de copia.", "err");
@@ -1482,8 +2096,29 @@ function importarCopiaSeguridad(inputEl){
   reader.readAsText(file);
 }
 
+function confirmarRestaurarCopia(){
+  const p = window.__pendingRestore;
+  if(!p){ closeModal(); return; }
+  window.__pendingRestore = null;
+  state = p.nuevoEstado;
+  if(!state.settings) state.settings = defaultState().settings;
+  if(state.settings.nif===undefined) state.settings.nif="";
+  if(state.settings.serieFactura===undefined) state.settings.serieFactura="T";
+  if(state.settings.serieDevolucion===undefined) state.settings.serieDevolucion="D";
+  if(state.settings.autoImprimir===undefined) state.settings.autoImprimir=true;
+  if(state.settings.cajonHabilitado===undefined) state.settings.cajonHabilitado=false;
+  if(!state.tickets) state.tickets = [];
+  if(!state.devoluciones) state.devoluciones = [];
+  if(!state.sales) state.sales = [];
+  saveState();
+  document.getElementById("storeName").textContent = (state.settings.nombreTienda || "Mi Zapatería").toUpperCase();
+  closeModal();
+  render();
+  showToast(`Copia restaurada: ${p.nProd} productos, ${p.nVentas} ventas ✓`, "ok");
+}
+
 function exportLedgerCSV(){
-  const header = "numero_ticket,fecha,marca,modelo,talla,cantidad,subtotal,iva,total,beneficio,hash_ticket,hash_anterior" + String.fromCharCode(10);
+  const header = "numero_ticket,fecha,marca,modelo,talla,cantidad,subtotal,iva,total,beneficio" + String.fromCharCode(10);
   const rows = state.sales.map(s=>{
     const t = state.tickets.find(x=>x.id===s.ticketId) || {numSerieFactura:"",hash:"",prevHash:""};
     return [ t.numSerieFactura||"", s.fecha, s.marca, s.modelo, s.talla, s.cantidad, s.subtotal.toFixed(2), s.iva.toFixed(2), s.total.toFixed(2), s.beneficio.toFixed(2), t.hash||"", t.prevHash||"" ].join(",");
@@ -1496,9 +2131,9 @@ function exportLedgerCSV(){
 }
 
 function exportDevolucionesCSV(){
-  const header = "numero,fecha,marca,modelo,talla,cantidad,motivo,importe,repuesto_stock,hash,hash_anterior" + String.fromCharCode(10);
+  const header = "numero,fecha,marca,modelo,talla,cantidad,motivo,importe,repuesto_stock" + String.fromCharCode(10);
   const rows = state.devoluciones.map(d=>
-    [ d.numSerie, d.fecha, d.marca, d.modelo, d.talla, d.cantidad, d.motivo, d.importe.toFixed(2), d.reponerStock?"si":"no", d.hash, d.prevHash ].join(",")
+    [ d.numSerie, d.fecha, d.marca, d.modelo, d.talla, d.cantidad, d.motivo, d.importe.toFixed(2), d.reponerStock?"si":"no" ].join(",")
   ).join(String.fromCharCode(10));
   const blob = new Blob([header+rows], {type:"text/csv"});
   const url = URL.createObjectURL(blob);
@@ -1549,7 +2184,7 @@ function toggleModeloSeleccionado(key, checked){
   if(informesSeleccion===null) informesSeleccion = getSelectedModelKeys();
   if(checked){ if(!informesSeleccion.includes(key)) informesSeleccion.push(key); }
   else informesSeleccion = informesSeleccion.filter(k=>k!==key);
-  render();
+  renderSinScroll();
 }
 function toggleMarcaCompleta(marca, checked){
   if(informesSeleccion===null) informesSeleccion = getSelectedModelKeys();
@@ -1559,11 +2194,11 @@ function toggleMarcaCompleta(marca, checked){
   } else {
     informesSeleccion = informesSeleccion.filter(k=>!modelos.includes(k));
   }
-  render();
+  renderSinScroll();
 }
-function seleccionarTopModelos(){ informesSeleccion = topModelsUnits(6).map(e=>e[0]); render(); }
-function seleccionarTodosModelos(){ informesSeleccion = allModelKeys(); render(); }
-function seleccionarNingunModelo(){ informesSeleccion = []; render(); }
+function seleccionarTopModelos(){ informesSeleccion = topModelsUnits(6).map(e=>e[0]); renderSinScroll(); }
+function seleccionarTodosModelos(){ informesSeleccion = allModelKeys(); renderSinScroll(); }
+function seleccionarNingunModelo(){ informesSeleccion = []; renderSinScroll(); }
 function setInformesPeriodo(p){ informesPeriodo = p; render(); }
 
 function salesByModelSeries(models, granularity){
@@ -1887,7 +2522,7 @@ function ajustarPrecioVentaBonito(){
 function saveProduct(id){
   const marca = document.getElementById("f-marca").value.trim();
   const modelo = document.getElementById("f-modelo").value.trim();
-  if(!marca || !modelo){ alert("Marca y modelo son obligatorios."); return; }
+  if(!marca || !modelo){ showToast("Marca y modelo son obligatorios.", "err"); return; }
   const tipoArticulo = document.getElementById("f-tipo").value;
   const categoria = document.getElementById("f-categoria").value.trim();
   const genero = document.getElementById("f-genero").value;
@@ -1933,9 +2568,25 @@ function saveProduct(id){
 }
 
 function deleteProduct(id){
-  if(!confirm("¿Eliminar este producto del almacén? Esta acción no se puede deshacer.")) return;
+  const p = state.products.find(x=>x.id===id);
+  if(!p) return;
+  document.getElementById("modal-root").innerHTML = `
+    <div class="modal-overlay">
+      <div class="modal" style="max-width:360px;">
+        <h3>🗑️ Eliminar producto</h3>
+        <p>¿Eliminar <b>${escapeHtml(p.marca)} ${escapeHtml(p.modelo)}</b> del almacén?</p>
+        <p style="color:var(--ink-dim);font-size:13px;">Esta acción no se puede deshacer.</p>
+        <div class="modal-actions" style="justify-content:center;gap:12px;">
+          <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+          <button class="btn danger" onclick="confirmarDeleteProduct('${id}')">🗑️ Sí, eliminar</button>
+        </div>
+      </div>
+    </div>`;
+}
+function confirmarDeleteProduct(id){
   state.products = state.products.filter(p=>p.id!==id);
   saveState();
+  closeModal();
   render();
 }
 
@@ -2021,7 +2672,7 @@ function assignBarcodeExisting(code){
   const productId = document.getElementById("assign-product").value;
   const talla = document.getElementById("assign-talla").value;
   const cantidad = parseInt(document.getElementById("assign-cantidad").value)||1;
-  if(!productId){ alert("Selecciona un producto."); return; }
+  if(!productId){ showToast("Selecciona un producto.", "err"); return; }
   const p = state.products.find(x=>x.id===productId);
   const info = tallaInfo(p, talla);
   p.tallas[talla] = { stock:(info.stock||0)+cantidad, barcode:code };
@@ -2034,7 +2685,7 @@ function assignBarcodeExisting(code){
 function assignBarcodeNewProduct(code){
   const marca = document.getElementById("new-marca").value.trim();
   const modelo = document.getElementById("new-modelo").value.trim();
-  if(!marca||!modelo){ alert("Marca y modelo son obligatorios para crear el producto."); return; }
+  if(!marca||!modelo){ showToast("Marca y modelo son obligatorios.", "err"); return; }
   const tipoArticulo = document.getElementById("new-tipo").value;
   const precioCompraBruto = parseFloat(document.getElementById("new-compra").value)||0;
   const precioVentaBruto = parseFloat(document.getElementById("new-venta").value)||0;
@@ -2060,9 +2711,33 @@ function handleScanVenta(code){
   const usado = inCart? inCart.cantidad : 0;
   if(info.stock - usado <= 0){ showToast(`Sin stock disponible: ${match.product.marca} ${match.product.modelo} talla ${match.talla}`, "err"); return; }
   if(inCart) inCart.cantidad += 1;
-  else cart.push({ productId:match.product.id, talla:match.talla, cantidad:1 });
+  else cart.push({ productId:match.product.id, talla:match.talla, cantidad:1, descuento:{activo:false,tipo:'porcentaje',valor:0} });
   render();
   showToast(`+ ${match.product.marca} ${match.product.modelo} talla ${match.talla}`, "ok");
+}
+
+function addOtroToCart(){
+  const nombre = (document.getElementById('otro-nombre')?.value || otroNombre).trim();
+  const modelo = (document.getElementById('otro-modelo')?.value || otroModelo).trim();
+  const talla  = (document.getElementById('otro-talla')?.value  || otroTalla).trim();
+  const precio = parseFloat(document.getElementById('otro-precio')?.value || otroPrecio);
+  const cantidad = parseInt(document.getElementById('otro-cantidad')?.value || otroCantidad) || 1;
+  if(!nombre){ showToast("El nombre del artículo es obligatorio.", "err"); return; }
+  if(!precio || precio<=0){ showToast("El precio debe ser mayor que cero.", "err"); return; }
+  cart.push({
+    productId: '__manual__',
+    marcaManual: nombre,
+    modeloManual: modelo || '—',
+    tallaManual: talla || '—',
+    precioManualConIva: precio,
+    cantidad,
+    descuento: {activo:false,tipo:'porcentaje',valor:0}
+  });
+  // Limpiar el formulario
+  otroNombre=''; otroModelo=''; otroTalla=''; otroPrecio=''; otroCantidad=1;
+  ventasTab='catalogo'; // volver al catálogo para ver el carrito
+  render();
+  showToast(`+ ${nombre} añadido al carrito`, "ok");
 }
 
 function addManualToCart(productId){
@@ -2072,7 +2747,7 @@ function addManualToCart(productId){
   if(tallaConStock===undefined){ showToast(`Sin stock disponible: ${p.marca} ${p.modelo}`, "err"); return; }
   const inCart = cart.find(l=>l.productId===p.id && l.talla===tallaConStock);
   if(inCart) inCart.cantidad += 1;
-  else cart.push({ productId:p.id, talla:tallaConStock, cantidad:1 });
+  else cart.push({ productId:p.id, talla:tallaConStock, cantidad:1, descuento:{activo:false,tipo:'porcentaje',valor:0} });
   render();
 }
 
@@ -2102,67 +2777,142 @@ function updateCartQty(i, value){
 
 function removeFromCart(i){ cart.splice(i,1); render(); }
 
+function sortHistoryBy(campo){
+  // Si ya estamos ordenando por este campo, invertir la dirección
+  const actual = historyOrden;
+  const esAsc = actual === campo+'_asc';
+  historyOrden = esAsc ? campo+'_desc' : campo+'_asc';
+  render();
+}
+
+function toggleDescuentoLinea(i){
+  if(!cart[i].descuento) cart[i].descuento={activo:false,tipo:'porcentaje',valor:0};
+  cart[i].descuento.activo = !cart[i].descuento.activo;
+  render();
+}
+function setDescuentoLineaTipo(i, tipo){ if(cart[i].descuento) cart[i].descuento.tipo=tipo; render(); }
+function setDescuentoLineaValor(i, valor){ if(cart[i].descuento) cart[i].descuento.valor=parseFloat(valor)||0; render(); }
+
+
 // Calcula las líneas de venta aplicando primero la promoción propia del producto (si tiene)
 // y después, sobre ese subtotal, un descuento puntual opcional (p. ej. para un cliente habitual).
 // El descuento se reparte proporcionalmente entre las líneas del carrito.
 function computeLinesConDescuento(lines, descuento){
+  const ivaRate = state.settings.ivaRate;
   const raw = lines.map(line=>{
+    // --- Artículo manual (no en catálogo) ---
+    if(line.productId === '__manual__'){
+      const pvpConIva = line.precioManualConIva || 0;
+      const baseSinIva = pvpConIva / (1 + ivaRate/100);
+      let baseConDescLinea = baseSinIva;
+      const dl = line.descuento;
+      if(dl && dl.activo && dl.valor>0){
+        const pvpLinea = pvpConIva * line.cantidad;
+        const pvpDesc = dl.tipo==='porcentaje' ? pvpLinea*(1-dl.valor/100) : Math.max(0, pvpLinea-dl.valor);
+        baseConDescLinea = (pvpDesc / line.cantidad) / (1 + ivaRate/100);
+      }
+      const rawSubtotal = baseConDescLinea * line.cantidad;
+      return { line, p:null,
+        marca:line.marcaManual, modelo:line.modeloManual, talla:line.tallaManual,
+        baseConPromo:baseSinIva, baseConDescLinea, rawSubtotal, esManual:true,
+        descuentoLineaImporte:(baseSinIva-baseConDescLinea)*line.cantidad*(1+ivaRate/100)
+      };
+    }
+    // --- Artículo del catálogo ---
     const p = state.products.find(x=>x.id===line.productId);
     if(!p) return null;
-    const base = precioBaseConPromo(p); // ya incluye la promoción del producto, si tiene
-    const rawSubtotal = base*line.cantidad;
-    return { line, p, base, rawSubtotal };
-  }).filter(Boolean);
-  const rawTotal = raw.reduce((a,r)=>a+r.rawSubtotal,0);
+    // 1) Precio base tras la promoción del producto (almacén)
+    const baseConPromo = precioBaseConPromo(p);
 
-  let descuentoImporte = 0;
-  const descuentoPorLinea = raw.map(()=>0);
-
-  if(descuento && descuento.valor>0){
-    if(descuento.ambito==='articulo' && descuento.lineIndex!=null && raw[descuento.lineIndex]){
-      const objetivo = raw[descuento.lineIndex];
-      const importeLinea = descuento.tipo==='porcentaje'
-        ? objetivo.rawSubtotal*(descuento.valor/100)
-        : Math.min(descuento.valor, objetivo.rawSubtotal);
-      descuentoPorLinea[descuento.lineIndex] = importeLinea;
-      descuentoImporte = importeLinea;
-    } else {
-      descuentoImporte = descuento.tipo==='porcentaje' ? rawTotal*(descuento.valor/100) : Math.min(descuento.valor, rawTotal);
-      raw.forEach((r,i)=>{ const factor = rawTotal>0 ? r.rawSubtotal/rawTotal : 0; descuentoPorLinea[i] = descuentoImporte*factor; });
+    // 2) Descuento manual por línea (independiente por artículo)
+    // El descuento opera siempre sobre el precio CON IVA (el que ve el cliente):
+    // - Porcentaje: se reduce ese % del PVP final.
+    // - Importe fijo: se resta directamente del total de la línea con IVA.
+    // No se aplica el redondeo automático (,00/,50/,90/,99) porque el cliente
+    // está especificando exactamente cuánto quiere pagar.
+    let baseConDescLinea = baseConPromo;
+    const dl = line.descuento;
+    if(dl && dl.activo && dl.valor>0){
+      const pvpLineaConIva = precioConIVA(baseConPromo) * line.cantidad; // total línea con IVA
+      let pvpLineaDescuentado;
+      if(dl.tipo==='porcentaje'){
+        pvpLineaDescuentado = pvpLineaConIva * (1 - dl.valor/100);
+      } else {
+        // dl.valor = importe total a restar de esta línea (en €, con IVA incluido)
+        pvpLineaDescuentado = Math.max(0, pvpLineaConIva - dl.valor);
+      }
+      // Convertir de vuelta a precio sin IVA por unidad (para que el cálculo de totales sea coherente)
+      baseConDescLinea = (pvpLineaDescuentado / line.cantidad) / (1 + state.settings.ivaRate/100);
     }
+    const rawSubtotal = baseConDescLinea * line.cantidad;
+    return { line, p, baseConPromo, baseConDescLinea, rawSubtotal, esManual:false,
+             descuentoLineaImporte: (precioConIVA(baseConPromo) - precioConIVA(baseConDescLinea)) * line.cantidad };
+  }).filter(Boolean);
+
+  const rawTotal = raw.reduce((a,r)=>a+r.rawSubtotal, 0);
+
+  // 3) Descuento global de factura (se reparte proporcionalmente entre líneas)
+  let descuentoFacturaImporte = 0;
+  const descuentoFacturaPorLinea = raw.map(()=>0);
+  if(descuento && descuento.valor>0){
+    descuentoFacturaImporte = descuento.tipo==='porcentaje'
+      ? rawTotal*(descuento.valor/100)
+      : Math.min(descuento.valor, rawTotal);
+    raw.forEach((r,i)=>{
+      const factor = rawTotal>0 ? r.rawSubtotal/rawTotal : 0;
+      descuentoFacturaPorLinea[i] = descuentoFacturaImporte * factor;
+    });
   }
 
   let subtotalT=0, ivaT=0, totalT=0;
   const salesLines = raw.map((r,i)=>{
-    const subtotal = r.rawSubtotal - descuentoPorLinea[i];
+    const subtotal = r.rawSubtotal - descuentoFacturaPorLinea[i];
     const iva = subtotal*(state.settings.ivaRate/100);
     const total = subtotal+iva;
+    const dl = r.line.descuento;
+
+    if(r.esManual){
+      subtotalT+=subtotal; ivaT+=iva; totalT+=total;
+      return {
+        productId:'__manual__', marca:r.marca, modelo:r.modelo, talla:r.talla, genero:'unisex',
+        cantidad:r.line.cantidad, subtotal, iva, total, beneficio:subtotal, // beneficio desconocido, igual al subtotal
+        precioOriginalUnit: r.baseConPromo, promoTipo:null, promoValor:null, precioTrasPromoUnit:r.baseConPromo,
+        descManualActivo: !!(dl && dl.activo && dl.valor>0),
+        descManualTipo: dl?.tipo||null, descManualValor: dl?.valor||null,
+        descManualImporte: r.descuentoLineaImporte,
+        descuentoPuntualLinea: descuentoFacturaPorLinea[i],
+        esManual: true
+      };
+    }
+
     const beneficio = subtotal - (r.p.precioCompra*r.line.cantidad);
     subtotalT+=subtotal; ivaT+=iva; totalT+=total;
     const promoActiva = !!(r.p.promo && r.p.promo.activo);
     return {
       productId:r.p.id, marca:r.p.marca, modelo:r.p.modelo, talla:r.line.talla, genero:r.p.genero||'unisex',
       cantidad:r.line.cantidad, subtotal, iva, total, beneficio,
-      // Desglose de la promoción del producto (si tenía), a precio unitario SIN IVA, para poder
-      // mostrar en el ticket "precio original / descuento / rebaja / precio final".
       precioOriginalUnit: r.p.precioVenta,
       promoTipo: promoActiva ? r.p.promo.tipo : null,
       promoValor: promoActiva ? r.p.promo.valor : null,
-      precioTrasPromoUnit: r.base,
-      descuentoPuntualLinea: descuentoPorLinea[i]
+      precioTrasPromoUnit: r.baseConPromo,
+      // Descuento manual por línea
+      descManualActivo: !!(dl && dl.activo && dl.valor>0),
+      descManualTipo: dl ? dl.tipo : null,
+      descManualValor: dl ? dl.valor : null,
+      descManualImporte: r.descuentoLineaImporte,
+      // Descuento global de factura prorrateado a esta línea
+      descuentoPuntualLinea: descuentoFacturaPorLinea[i],
+      esManual: false
     };
   });
-  return { salesLines, subtotalT, ivaT, totalT, descuentoImporte };
+  const descuentoLineaTotal = raw.reduce((a,r)=>a+r.descuentoLineaImporte,0);
+  const descuentoImporte = descuentoFacturaImporte + descuentoLineaTotal;
+  return { salesLines, subtotalT, ivaT, totalT, descuentoImporte, descuentoFacturaImporte, descuentoLineaTotal };
 }
 
 function cartDescuentoActual(){
   if(!(cartDescuentoActivo && cartDescuentoValor>0)) return null;
-  return {
-    tipo: cartDescuentoTipo,
-    valor: cartDescuentoValor,
-    ambito: cartDescuentoAmbito,
-    lineIndex: cartDescuentoAmbito==='articulo' ? cartDescuentoLineaIndex : null
-  };
+  return { tipo: cartDescuentoTipo, valor: cartDescuentoValor };
 }
 
 function cartTotals(){
@@ -2172,101 +2922,6 @@ function cartTotals(){
 
 // Implementación de SHA-256 en JS puro (no depende de crypto.subtle, que puede no
 // estar disponible dentro del iframe con sandbox donde corre este artefacto).
-function sha256RightRotate(value, amount){ return (value>>>amount) | (value<<(32-amount)); }
-function sha256Raw(asciiStr){
-  const mathPow = Math.pow;
-  const maxWord = mathPow(2,32);
-  let i, j;
-  let result = '';
-  const words = [];
-  const asciiBitLength = asciiStr.length*8;
-
-  let hash = sha256Raw.h = sha256Raw.h || [];
-  const k = sha256Raw.k = sha256Raw.k || [];
-  let primeCounter = k.length;
-
-  const isComposite = {};
-  for(let candidate=2; primeCounter<64; candidate++){
-    if(!isComposite[candidate]){
-      for(i=0;i<313;i+=candidate) isComposite[i]=candidate;
-      hash[primeCounter] = (mathPow(candidate,.5)*maxWord)|0;
-      k[primeCounter++] = (mathPow(candidate,1/3)*maxWord)|0;
-    }
-  }
-  hash = hash.slice(0,8);
-
-  let ascii = asciiStr + '\x80';
-  while(ascii.length%64 - 56) ascii += '\x00';
-  for(i=0;i<ascii.length;i++){
-    j = ascii.charCodeAt(i);
-    if(j>>8) return null;
-    words[i>>2] |= j << ((3-i)%4)*8;
-  }
-  words[words.length] = ((asciiBitLength/maxWord)|0);
-  words[words.length] = (asciiBitLength);
-
-  for(j=0;j<words.length;){
-    const w = words.slice(j, j+=16);
-    const oldHash = hash;
-    hash = hash.slice(0,8);
-    for(i=0;i<64;i++){
-      const w15 = w[i-15], w2 = w[i-2];
-      const a = hash[0], e = hash[4];
-      const temp1 = hash[7]
-        + (sha256RightRotate(e,6) ^ sha256RightRotate(e,11) ^ sha256RightRotate(e,25))
-        + ((e&hash[5])^((~e)&hash[6]))
-        + k[i]
-        + (w[i] = (i<16) ? w[i] : (
-            w[i-16]
-            + (sha256RightRotate(w15,7) ^ sha256RightRotate(w15,18) ^ (w15>>>3))
-            + w[i-7]
-            + (sha256RightRotate(w2,17) ^ sha256RightRotate(w2,19) ^ (w2>>>10))
-          )|0
-        );
-      const temp2 = (sha256RightRotate(a,2) ^ sha256RightRotate(a,13) ^ sha256RightRotate(a,22))
-        + ((a&hash[1])^(a&hash[2])^(hash[1]&hash[2]));
-      hash = [(temp1+temp2)|0].concat(hash);
-      hash[4] = (hash[4]+temp1)|0;
-    }
-    for(i=0;i<8;i++) hash[i] = (hash[i]+oldHash[i])|0;
-  }
-
-  for(i=0;i<8;i++){
-    for(j=3;j+1;j--){
-      const b = (hash[i]>>(j*8))&255;
-      result += ((b<16)?'0':'') + b.toString(16);
-    }
-  }
-  return result;
-}
-function sha256Hex(str){
-  // codifica a UTF-8 byte-a-byte por si el texto trajera algún carácter no ASCII
-  const bytes = unescape(encodeURIComponent(str));
-  return sha256Raw(bytes).toUpperCase();
-}
-
-function fechaDDMMYYYY(iso){
-  const d = new Date(iso);
-  const pad = n => String(n).padStart(2,'0');
-  return `${pad(d.getDate())}-${pad(d.getMonth()+1)}-${d.getFullYear()}`;
-}
-function fechaHoraConHuso(iso){
-  const d = new Date(iso);
-  const pad = n => String(n).padStart(2,'0');
-  const offMin = -d.getTimezoneOffset();
-  const sign = offMin>=0 ? '+' : '-';
-  const abs = Math.abs(offMin);
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${sign}${pad(Math.floor(abs/60))}:${pad(abs%60)}`;
-}
-
-// Registra un ticket (grupo de líneas) con numeración correlativa y huella encadenada.
-// La cadena de campos y el algoritmo (SHA-256) siguen el mismo orden que publica la AEAT
-// para el "Registro de Alta" (IDEmisorFactura, NumSerieFactura, FechaExpedicionFactura,
-// TipoFactura, CuotaTotal, ImporteTotal, Huella del registro anterior, FechaHoraHusoGenRegistro).
-// Esto NO implica homologación: falta el resto de campos obligatorios del XSD oficial
-// (desglose de IVA, destinatario, sistema informático declarante), la firma electrónica
-// y el envío por servicio web con certificado digital.
-// No decrementa stock si skipStock=true (se usa para cargar datos de ejemplo históricos).
 async function registerTicket(lines, fechaIso, skipStock, descuento, metodoPago){
   const ticketId = uid();
   const { salesLines: computedLines, subtotalT, ivaT, totalT, descuentoImporte } = computeLinesConDescuento(lines, descuento);
@@ -2281,17 +2936,11 @@ async function registerTicket(lines, fechaIso, skipStock, descuento, metodoPago)
   }
   const salesLines = computedLines.map(cl=> ({ id:uid(), ticketId, fecha:fechaIso, ...cl }));
 
-  const numero = state.tickets.length+1;
+  const numero = state.tickets.length + 1;
   const serie = state.settings.serieFactura || "T";
   const numSerieFactura = `${serie}/${String(numero).padStart(6,'0')}`;
-  const prevHash = state.tickets.length ? state.tickets[state.tickets.length-1].hash : "";
-  const nif = state.settings.nif || "SINNIF00X";
-  const fechaExpedicion = fechaDDMMYYYY(fechaIso);
-  const fechaHoraGen = fechaHoraConHuso(new Date().toISOString());
-  const dataString = `IDEmisorFactura=${nif}&NumSerieFactura=${numSerieFactura}&FechaExpedicionFactura=${fechaExpedicion}&TipoFactura=F2&CuotaTotal=${ivaT.toFixed(2)}&ImporteTotal=${totalT.toFixed(2)}&Huella=${prevHash}&FechaHoraHusoGenRegistro=${fechaHoraGen}`;
-  const hash = await sha256Hex(dataString);
   const descuentoInfo = (descuento && descuentoImporte>0) ? { tipo:descuento.tipo, valor:descuento.valor, importe:descuentoImporte, ambito: descuento.ambito||'factura' } : null;
-  const ticket = { id:ticketId, numero, numSerieFactura, tipoFactura:"F2", fecha:fechaIso, fechaExpedicion, fechaHoraGen, subtotal:subtotalT, iva:ivaT, total:totalT, descuento:descuentoInfo, metodoPago:metodoPago||'efectivo', prevHash, hash, dataString };
+  const ticket = { id:ticketId, numero, numSerieFactura, fecha:fechaIso, subtotal:subtotalT, iva:ivaT, total:totalT, descuento:descuentoInfo, metodoPago:metodoPago||'efectivo', estadoPago:'completada', datosCliente:null };
   state.tickets.push(ticket);
   state.sales.push(...salesLines);
   return ticket;
@@ -2305,14 +2954,12 @@ async function checkout(){
     cartDescuentoActivo = false;
     cartDescuentoValor = 0;
     cartDescuentoTipo = "porcentaje";
-    cartDescuentoAmbito = "factura";
-    cartDescuentoLineaIndex = null;
     cartMetodoPago = "efectivo";
     saveState();
-    render();
-    showToast("Venta registrada ✓", "ok");
+    render(); // el carrito ya está vacío y la venta aparece en el historial
+    showToast("✅ Venta completada — " + ticket.numSerieFactura, "ok");
     if(state.settings.cajonHabilitado) abrirCajon();
-    abrirTicketImprimible(ticket.id, state.settings.autoImprimir!==false);
+    if(state.settings.autoImprimir!==false) setTimeout(()=>abrirTicketImprimible(ticket.id, true), 300);
   }catch(e){
     console.error(e);
     showToast("No se pudo registrar la venta. Revisa la consola.", "err");
@@ -2339,13 +2986,7 @@ async function registerDevolucion(sale, cantidad, motivo, reponerStock){
   const numero = state.devoluciones.length+1;
   const serie = state.settings.serieDevolucion || "D";
   const numSerie = `${serie}/${String(numero).padStart(6,'0')}`;
-  const prevHash = state.devoluciones.length ? state.devoluciones[state.devoluciones.length-1].hash : "";
-  const nif = state.settings.nif || "SINNIF00X";
   const fechaIso = new Date().toISOString();
-  const fechaExpedicion = fechaDDMMYYYY(fechaIso);
-  const fechaHoraGen = fechaHoraConHuso(fechaIso);
-  const dataString = `IDEmisorFacturaAnulada=${nif}&NumSerieFacturaAnulada=${numSerie}&FechaExpedicionFacturaAnulada=${fechaExpedicion}&Motivo=${motivo}&ImporteAnulado=${importe.toFixed(2)}&Huella=${prevHash}&FechaHoraHusoGenRegistro=${fechaHoraGen}`;
-  const hash = await sha256Hex(dataString);
 
   if(reponerStock){
     const p = state.products.find(x=>x.id===sale.productId);
@@ -2359,8 +3000,7 @@ async function registerDevolucion(sale, cantidad, motivo, reponerStock){
   const devolucion = {
     id: uid(), numero, numSerie, fecha: fechaIso, saleId: sale.id, ticketId: sale.ticketId,
     productId: sale.productId, marca: sale.marca, modelo: sale.modelo, talla: sale.talla, genero: sale.genero,
-    cantidad, motivo, importe, iva: ivaProporcional, reponerStock: !!reponerStock,
-    prevHash, hash, dataString
+    cantidad, motivo, importe, iva: ivaProporcional, reponerStock: !!reponerStock
   };
   state.devoluciones.push(devolucion);
   return devolucion;
