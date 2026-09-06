@@ -1,7 +1,7 @@
 // Service Worker de Mi Zapatería
-// Versión: incrementar este número cada vez que se actualice la app
-// para que los dispositivos instalados descarguen la versión nueva.
-const CACHE_NAME = 'zapateria-v1';
+// Versión: incrementar CACHE_NAME con cada actualización de la app
+// para que los dispositivos instalados descarguen la versión nueva automáticamente.
+const CACHE_NAME = 'zapateria-v2';
 
 // Al instalar: guardar en caché los archivos de la app
 self.addEventListener('install', event => {
