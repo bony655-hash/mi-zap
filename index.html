@@ -342,7 +342,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
     </div>
     <div style="display:flex;align-items:center;gap:14px;flex:1;justify-content:center;">
       <div id="header-clock" style="font-size:15px;font-weight:700;color:var(--ink);letter-spacing:0.5px;white-space:nowrap;"></div>
-      <span id="sync-status" style="font-size:16px;cursor:default;" title="Estado de sincronización">☁️</span>
+      <span id="sync-status" style="font-size:20px;cursor:default;line-height:1;" title="Estado de sincronización">☁️</span>
     </div>
     <div style="display:flex;align-items:center;gap:10px;">
       <button id="btn-abrir-caja" onclick="abrirCajon()" style="background:var(--teal);border:none;color:#fff;border-radius:var(--radius-sm);padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;">
@@ -364,7 +364,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "4.4";
+const APP_VERSION = "4.5.4";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -385,50 +385,79 @@ var _guardandoEnFb = false; // evita bucle: guardar→onSnapshot→guardar
 
 function iniciarFirebase(){
   try{
-    if(typeof firebase === 'undefined') return;
+    if(typeof firebase === 'undefined'){
+      console.warn('Firebase SDK no cargado — sin sincronización en la nube');
+      setTimeout(function(){ showToast('⚠️ Firebase no disponible. Comprueba la conexión a internet.','err'); }, 2000);
+      return;
+    }
     fbApp = firebase.initializeApp(FIREBASE_CONFIG);
     fbDb  = firebase.firestore();
     fbRef = fbDb.collection('zapateria').doc('estado');
-    // Persistencia offline: Firebase funciona sin internet y sincroniza al reconectar
     fbDb.enablePersistence({synchronizeTabs:true}).catch(function(err){
       console.log('Firebase offline persistence:', err.code);
     });
     console.log('Firebase iniciado ✓');
-  }catch(e){ console.error('Error iniciando Firebase:', e); }
+    setTimeout(function(){ showToast('☁️ Firebase conectado','ok'); }, 1500);
+  }catch(e){
+    console.error('Error iniciando Firebase:', e);
+    setTimeout(function(){ showToast('⚠️ Error Firebase: '+e.message,'err'); }, 1500);
+  }
 }
 
 // Guarda en Firebase todo el estado EXCEPTO las fotos (pueden exceder el límite de 1MB)
 // Las fotos se guardan solo en localStorage de cada dispositivo.
+var _timerSync = null;
 function guardarEnFirebase(){
-  if(!fbRef || _guardandoEnFb) return;
+  if(!fbRef) return;
+  if(_guardandoEnFb) return;
   try{
     var sinFotos = JSON.parse(JSON.stringify(state));
     sinFotos.products.forEach(function(p){ delete p.foto; });
+    sinFotos._ts = Date.now();
     _guardandoEnFb = true;
+    mostrarEstadoSync('guardando');
+    // Timeout: si Firebase no responde en 8s, resetear icono a error
+    if(_timerSync) clearTimeout(_timerSync);
+    _timerSync = setTimeout(function(){
+      _guardandoEnFb = false;
+      mostrarEstadoSync('err');
+    }, 8000);
     fbRef.set(sinFotos).then(function(){
+      if(_timerSync) clearTimeout(_timerSync);
       _guardandoEnFb = false;
       mostrarEstadoSync('ok');
     }).catch(function(err){
+      if(_timerSync) clearTimeout(_timerSync);
       _guardandoEnFb = false;
       console.error('Error guardando en Firebase:', err);
       mostrarEstadoSync('err');
+      showToast('⚠️ Error al sincronizar: '+err.message, 'err');
     });
-  }catch(e){ _guardandoEnFb = false; console.error(e); }
+  }catch(e){
+    if(_timerSync) clearTimeout(_timerSync);
+    _guardandoEnFb = false;
+    console.error('Error en guardarEnFirebase:', e);
+  }
 }
 
 // Escucha cambios en Firebase y actualiza la app en todos los dispositivos
 function iniciarEscuchaFirebase(){
   if(!fbRef || fbEscuchando) return;
   fbEscuchando = true;
-  fbRef.onSnapshot(function(doc){
+  var _ultimoTs = 0; // para ignorar actualizaciones sin cambios reales
+  fbRef.onSnapshot({includeMetadataChanges: false}, function(doc){
     if(_guardandoEnFb) return; // ignorar el eco de nuestro propio guardado
     if(!doc.exists) return;
     try{
       var remoto = doc.data();
       if(!remoto || !Array.isArray(remoto.products)) return;
+      // Ignorar si el timestamp no cambió (mismos datos)
+      if(remoto._ts && remoto._ts === _ultimoTs) return;
+      _ultimoTs = remoto._ts || 0;
       // Conservar las fotos locales (no están en Firebase)
       var fotosLocales = {};
       if(state && state.products) state.products.forEach(function(p){ if(p.foto) fotosLocales[p.id]=p.foto; });
+      var nVentasAntes = state && state.sales ? state.sales.length : 0;
       state = remoto;
       state.products.forEach(function(p){ if(fotosLocales[p.id]) p.foto=fotosLocales[p.id]; });
       // Migración de campos que puedan faltar
@@ -437,20 +466,28 @@ function iniciarEscuchaFirebase(){
       state.tickets.forEach(function(t){ if(!t.estadoPago) t.estadoPago='completada'; if(t.datosCliente===undefined) t.datosCliente=null; });
       // Guardar en localStorage (copia local con fotos)
       storage.set(STORAGE_KEY, JSON.stringify(state));
-      // Actualizar UI
       document.getElementById("storeName").textContent = (state.settings.nombreTienda||"Mi Zapatería").toUpperCase();
       render();
-      mostrarEstadoSync('sync');
+      // Solo avisar si llegaron ventas nuevas de otro dispositivo
+      if(state.sales.length > nVentasAntes){
+        showToast('📲 '+(state.sales.length-nVentasAntes)+' venta(s) recibidas de otro dispositivo', 'ok');
+      }
+      // El icono vuelve a ☁️ (ya estaba OK antes de la actualización)
+      mostrarEstadoSync('ok');
     }catch(e){ console.error('Error procesando datos de Firebase:', e); }
-  }, function(err){ console.error('Error en listener Firebase:', err); mostrarEstadoSync('err'); });
+  }, function(err){
+    console.error('Error en listener Firebase:', err);
+    mostrarEstadoSync('err');
+    showToast('Error de sincronización: '+err.message, 'err');
+  });
 }
 
 function mostrarEstadoSync(tipo){
   var el = document.getElementById('sync-status');
   if(!el) return;
-  if(tipo==='ok')   { el.textContent='☁️'; el.title='Guardado en la nube ✓'; el.style.color='var(--teal)'; }
-  if(tipo==='sync') { el.textContent='🔄'; el.title='Datos sincronizados';     el.style.color='var(--teal)'; }
-  if(tipo==='err')  { el.textContent='⚠️'; el.title='Sin conexión — datos guardados localmente'; el.style.color='var(--gold)'; }
+  if(tipo==='ok')       { el.textContent='☁️'; el.title='Sincronizado ✓'; el.style.opacity='1'; }
+  if(tipo==='guardando'){ el.textContent='⏫'; el.title='Guardando...'; el.style.opacity='0.7'; }
+  if(tipo==='err')      { el.textContent='⚠️'; el.title='Sin conexión — guardado localmente'; el.style.opacity='1'; }
 }
 
 
@@ -864,7 +901,7 @@ function renderAlmacen(){
         <span>Compra: <b>${eur(p.precioCompra)}</b></span>
         <span>Venta (sin IVA): <b>${eur(p.precioVenta)}</b>${tienePromo ? ` → <b style="color:var(--teal);">${eur(base)}</b>` : ""}</span>
         <span>PVP con IVA: ${pvpDisplay} ${promoBadge}</span>
-        <span>Margen: <b>${pct(margen(p))}</b> · <b style="color:var(--teal);">${eur(p.precioVenta - p.precioCompra)}</b></span>
+        <span>Margen: <b style="color:${margen(p)<0?'var(--red)':'var(--teal)'}">${pct(margen(p))}</b> · <b style="color:${(p.precioVenta-p.precioCompra)<0?'var(--red)':'var(--teal)'}">${eur(p.precioVenta - p.precioCompra)}</b></span>
       </div>
       <div class="studs">${sizes}</div>
       <div style="font-size:12px;color:var(--ink-dim);">Stock total: <b>${stockTotal(p)}</b> pares</div>
