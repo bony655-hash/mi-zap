@@ -1,7 +1,7 @@
 // Service Worker de Mi Zapatería v3.5
 // IMPORTANTE: cambiar CACHE_VERSION con cada actualización de la app
 // para que los dispositivos descarguen la nueva versión automáticamente.
-const CACHE_VERSION = 60;
+const CACHE_VERSION = 79;
 const CACHE_NAME = 'zapateria-v' + CACHE_VERSION;
 
 const ARCHIVOS_CORE = [
@@ -53,7 +53,9 @@ self.addEventListener('fetch', function(event) {
   if (esHTML) {
     // Red primero: siempre intenta descargar la versión más nueva
     event.respondWith(
-      fetch(event.request).then(function(response) {
+      // cache:'reload' salta la caché HTTP del navegador: sin esto se puede
+      // servir un index.html antiguo aunque en el servidor haya uno nuevo.
+      fetch(event.request.url, { cache: 'reload' }).then(function(response) {
         if (response && response.status === 200) {
           var copia = response.clone();
           caches.open(CACHE_NAME).then(function(cache) { cache.put(event.request, copia); });
