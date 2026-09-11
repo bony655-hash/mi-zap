@@ -1,7 +1,7 @@
 // Service Worker de Mi Zapatería v3.5
 // IMPORTANTE: cambiar CACHE_VERSION con cada actualización de la app
 // para que los dispositivos descarguen la nueva versión automáticamente.
-const CACHE_VERSION = 79;
+const CACHE_VERSION = 89;
 const CACHE_NAME = 'zapateria-v' + CACHE_VERSION;
 
 const ARCHIVOS_CORE = [
@@ -9,7 +9,9 @@ const ARCHIVOS_CORE = [
   './manifest.json',
   './icon-192.png',
   './favicon.png',
-  './icon-512.png'
+  './icon-512.png',
+  './icon-maskable-192.png',
+  './icon-maskable-512.png'
 ];
 
 // Al instalar: pre-cachear archivos y activar inmediatamente
