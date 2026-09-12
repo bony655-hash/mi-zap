@@ -415,7 +415,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "9.6";
+const APP_VERSION = "9.9";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -1177,6 +1177,7 @@ function defaultState(){
     avisos: [],
     settings: {
       contadoresSerie: {},
+      escposActivo: false, escposPagina: 19, escposColumnas: 48, escposCortar: true, escposCajon: true,
       prefijoEAN: "20", contadorEAN: 0, autoEAN: true, bloqueEAN: null,
       etiqFormato: "apli01787", etiqOffsetX: 0, etiqOffsetY: 0, etiqEscala: 100,
       ivaRate:21, recargoEquivalencia:5.2, tallaMin:35, tallaMax:46,
@@ -2427,6 +2428,173 @@ function renderDuplicados(){
     + '</div></div>';
 }
 
+// ============ DIAGNÓSTICO DEL NAVEGADOR KIOSCO ============
+// Fully Kiosk expone un objeto global "fully" con funciones nativas cuando
+// se activa Advanced Web Settings → Enable JavaScript Interface.
+// Qué funciones existe depende de la versión, así que en vez de suponer,
+// se le pregunta al propio dispositivo.
+
+function inspeccionarEntorno(){
+  var info = { entorno: [], fully: [], impresion: [], otros: [] };
+
+  // ¿Qué envoltorio nos está ejecutando?
+  if(typeof fully !== 'undefined')   info.entorno.push('Fully Kiosk (objeto "fully" disponible)');
+  if(typeof Android !== 'undefined') info.entorno.push('Android Kiosk (objeto "Android" disponible)');
+  if(typeof AndroidPrinter !== 'undefined') info.entorno.push('AndroidPrinter disponible');
+  if(!info.entorno.length) info.entorno.push('Navegador normal (sin envoltorio nativo)');
+
+  // Listar TODO lo que ofrece el objeto fully, si existe
+  if(typeof fully !== 'undefined'){
+    var nombres = [];
+    for(var k in fully){
+      try{ if(typeof fully[k] === 'function') nombres.push(k); }catch(e){}
+    }
+    nombres.sort();
+    info.fully = nombres;
+    // Separar lo que suene a impresión o a hardware
+    info.impresion = nombres.filter(function(n){
+      return /print|thermal|printer|escpos|drawer|cash|serial|usb/i.test(n);
+    });
+  }
+
+  // Capacidades del navegador que nos interesan
+  info.otros.push('Web Serial (cajón por USB en PC): ' + (navigator.serial ? 'sí' : 'no'));
+  info.otros.push('Web Bluetooth: ' + (navigator.bluetooth ? 'sí' : 'no'));
+  info.otros.push('Web USB: ' + (navigator.usb ? 'sí' : 'no'));
+  info.otros.push('Service Worker: ' + (navigator.serviceWorker ? 'sí' : 'no'));
+  info.otros.push('Pantalla táctil: ' + (esPantallaTactil() ? 'sí' : 'no'));
+  info.otros.push('Resolución: ' + window.innerWidth + '×' + window.innerHeight);
+  info.otros.push('Navegador: ' + navigator.userAgent.slice(0, 120));
+
+  return info;
+}
+
+function abrirDiagnostico(){
+  var i = inspeccionarEntorno();
+
+  var lista = function(arr, vacio){
+    if(!arr.length) return '<div style="color:var(--ink-dim);font-size:12.5px;">' + vacio + '</div>';
+    return '<div style="font-family:var(--font-mono);font-size:11.5px;line-height:1.7;word-break:break-word;">'
+      + arr.map(function(x){ return '· ' + escapeHtml(String(x)); }).join('<br>') + '</div>';
+  };
+
+  document.getElementById("modal-root").innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this) closeModal()">
+      <div class="modal" style="max-width:640px;">
+        <h3 style="margin-top:0;">🔍 Diagnóstico del dispositivo</h3>
+        <div class="note" style="font-size:12.5px;">
+          Esto informa de lo que realmente ofrece este dispositivo, sin suposiciones.
+          Útil para saber si se puede imprimir sin apps intermedias.
+        </div>
+
+        <h4 style="margin:14px 0 6px;font-size:13px;">Entorno de ejecución</h4>
+        ${lista(i.entorno, '—')}
+
+        <h4 style="margin:14px 0 6px;font-size:13px;">Funciones de impresión o hardware</h4>
+        ${lista(i.impresion, 'Ninguna. Este navegador no ofrece impresión nativa.')}
+
+        <h4 style="margin:14px 0 6px;font-size:13px;">Capacidades del navegador</h4>
+        ${lista(i.otros, '—')}
+
+        <h4 style="margin:14px 0 6px;font-size:13px;">Todas las funciones disponibles (${i.fully.length})</h4>
+        <div style="max-height:190px;overflow-y:auto;background:var(--canvas);padding:8px;border-radius:var(--radius-sm);">
+          ${lista(i.fully, 'El objeto "fully" no está disponible. Si usas Fully Kiosk, actívalo en Settings → Advanced Web Settings → Enable JavaScript Interface.')}
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn secondary" onclick="closeModal()">Cerrar</button>
+          <button class="btn accent" onclick="copiarDiagnostico()">📋 Copiar el informe</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function copiarDiagnostico(){
+  var i = inspeccionarEntorno();
+  var txt = 'DIAGNÓSTICO Mil Pasos v' + APP_VERSION + '\n\n'
+    + 'ENTORNO:\n' + i.entorno.join('\n') + '\n\n'
+    + 'IMPRESIÓN/HARDWARE:\n' + (i.impresion.join('\n') || '(ninguna)') + '\n\n'
+    + 'CAPACIDADES:\n' + i.otros.join('\n') + '\n\n'
+    + 'FUNCIONES fully.* (' + i.fully.length + '):\n' + (i.fully.join(', ') || '(no disponible)');
+
+  var ok = function(){ showToast('Informe copiado ✓', 'ok'); };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(ok).catch(function(){ pegarEnCuadro(txt); });
+  } else {
+    pegarEnCuadro(txt);
+  }
+}
+
+// Si no se puede copiar al portapapeles, mostrarlo para copiar a mano
+function pegarEnCuadro(txt){
+  document.getElementById("modal-root").innerHTML =
+    '<div class="modal-overlay" onclick="if(event.target===this) closeModal()">'
+    + '<div class="modal" style="max-width:640px;">'
+    + '<h3 style="margin-top:0;">Informe de diagnóstico</h3>'
+    + '<div class="note" style="font-size:12.5px;">Selecciona el texto y cópialo.</div>'
+    + '<textarea readonly style="width:100%;height:260px;font-family:var(--font-mono);font-size:11px;">'
+    + escapeHtml(txt) + '</textarea>'
+    + '<div class="modal-actions"><button class="btn secondary" onclick="closeModal()">Cerrar</button></div>'
+    + '</div></div>';
+}
+
+function renderImpresoraTermica(){
+  var s = state.settings;
+  var activo = s.escposActivo === true;
+  var pagina = (s.escposPagina === undefined) ? 19 : s.escposPagina;
+
+  return '<div><h3 class="sub-title" style="margin-top:0;">🖨️ Impresora térmica (ESC/POS)</h3>'
+    + '<div class="ticket" style="width:100%;">'
+    +   '<div class="note" style="font-size:12.5px;margin-bottom:10px;">'
+    +     'Envía el ticket como texto con códigos de formato en lugar de como imagen. '
+    +     'Es lo que usan los TPV: unos pocos kilobytes en vez de cientos, sin desbordar el búfer de la impresora. '
+    +     'Requiere tener RawBT instalada y configurada con tu impresora.'
+    +   '</div>'
+
+    +   '<label style="display:flex;align-items:center;gap:9px;font-size:13.5px;margin-bottom:12px;">'
+    +     '<input type="checkbox" ' + (activo ? 'checked' : '') + ' '
+    +     'onchange="state.settings.escposActivo=this.checked; saveState(); render();">'
+    +     '<b>Imprimir con RawBT</b> en lugar del navegador'
+    +   '</label>'
+
+    +   (activo ? (
+          '<div class="field"><label>Página de códigos (para los acentos)</label>'
+          + '<select style="width:100%" onchange="state.settings.escposPagina=parseInt(this.value); saveState(); render();">'
+          + PAGINAS_CODIGOS.map(function(p){
+              return '<option value="'+p.id+'"'+(pagina===p.id?' selected':'')+'>'+escapeHtml(p.nombre)+'</option>';
+            }).join('')
+          + '</select></div>'
+
+          + '<div class="field-row">'
+          +   '<div class="field"><label>Ancho en caracteres</label>'
+          +     '<select onchange="state.settings.escposColumnas=parseInt(this.value); saveState(); render();">'
+          +     [32,42,48].map(function(n){
+                  return '<option value="'+n+'"'+((s.escposColumnas||48)===n?' selected':'')+'>'+n+' columnas'+(n===48?' (80 mm)':(n===32?' (58 mm)':''))+'</option>';
+                }).join('')
+          +     '</select></div>'
+          + '</div>'
+
+          + '<label style="display:flex;align-items:center;gap:9px;font-size:13px;margin-bottom:6px;">'
+          +   '<input type="checkbox" ' + (s.escposCortar !== false ? 'checked' : '') + ' '
+          +   'onchange="state.settings.escposCortar=this.checked; saveState();"> Cortar el papel al terminar</label>'
+
+          + '<label style="display:flex;align-items:center;gap:9px;font-size:13px;margin-bottom:12px;">'
+          +   '<input type="checkbox" ' + (s.escposCajon === true ? 'checked' : '') + ' '
+          +   'onchange="state.settings.escposCajon=this.checked; saveState();"> Abrir el cajón en los cobros en efectivo</label>'
+
+          + '<div class="ticket-actions">'
+          +   '<button class="btn accent" onclick="pruebaESCPOS()">🧾 Ticket de prueba</button>'
+          +   '<button class="btn secondary" onclick="abrirCajonESCPOS()">💰 Abrir cajón</button>'
+          + '</div>'
+          + '<div class="note" style="font-size:12px;margin:10px 0 0;">'
+          +   'Imprime el ticket de prueba y mira los acentos. Si salen símbolos raros, '
+          +   'cambia la página de códigos y repite hasta que se lean bien.'
+          + '</div>'
+        ) : '')
+    + '</div></div>';
+}
+
 function renderAvisos(){
   var todos = state.avisos || [];
   var pend = avisosPendientes().length;
@@ -2504,6 +2672,7 @@ function renderBiblioteca(){
 
     +   '<div class="ticket-actions" style="margin-top:12px;">'
     +     '<button class="btn secondary" onclick="cargarHistorico()" title="Traer de la nube todos los tickets antiguos">☁️ Traer historial completo</button>'
+    +     '<button class="btn secondary" onclick="abrirDiagnostico()" title="Ver qué ofrece este dispositivo">🔍 Diagnóstico</button>'
     +     (antiguos
         ? '<button class="btn secondary" onclick="aligerarEquipo(false)" title="Retira del equipo los tickets ya guardados en la nube">🧹 Liberar sitio ('+antiguos+')</button>'
         : '')
@@ -2713,7 +2882,8 @@ function renderInformes(){
     ` : `<div class="empty-state">Aún no hay ventas registradas. Los gráficos aparecerán en cuanto registres la primera venta.</div>`}
 
     ${renderDuplicados()}
-    <div class="panel-duo">${renderBiblioteca()}${renderAvisos()}</div>
+    <div class="panel-duo">${renderImpresoraTermica()}${renderBiblioteca()}</div>
+    <div class="panel-duo">${renderAvisos()}<div></div></div>
     <h3 class="sub-title">Facturación — registro de ventas</h3>
     <div class="note">
       Registro numerado de todas las ventas. Puedes filtrar por periodo, reimprimir cualquier ticket o eliminarlo si fue un error.
@@ -3271,13 +3441,238 @@ function imprimirDocumento(htmlCompleto, etiqueta){
   else marco.onload = function(){ setTimeout(lanzar, 350); };
 }
 
+// ============ IMPRESIÓN ESC/POS DIRECTA (RawBT) ============
+// Enviar el ticket como imagen obliga a la impresora a tragar cientos de
+// kilobytes y su búfer se desborda: es el error "No ACK". Con ESC/POS se
+// manda texto plano con códigos de formato, unos pocos kilobytes, que es
+// como imprimen los TPV de verdad.
+
+// Páginas de códigos habituales en impresoras térmicas. La correcta depende
+// del modelo, así que se elige en Ajustes y se comprueba con el ticket de prueba.
+var PAGINAS_CODIGOS = [
+  {id:19, nombre:'CP858 — Europa occidental con €  (recomendado)'},
+  {id:2,  nombre:'CP850 — Multilingüe'},
+  {id:16, nombre:'CP1252 — Windows Europa occidental'},
+  {id:0,  nombre:'CP437 — Estados Unidos'},
+  {id:-1, nombre:'Sin acentos (solo ASCII, funciona siempre)'}
+];
+
+// Equivalencias para cuando se imprime sin acentos
+var SIN_ACENTOS = {
+  'á':'a','é':'e','í':'i','ó':'o','ú':'u','ü':'u','ñ':'n','ç':'c',
+  'Á':'A','É':'E','Í':'I','Ó':'O','Ú':'U','Ü':'U','Ñ':'N','Ç':'C',
+  'à':'a','è':'e','ì':'i','ò':'o','ù':'u','€':'EUR','º':'o','ª':'a','·':'-',
+  '–':'-','—':'-','“':'"','”':'"','‘':"'",'’':"'",'…':'...'
+};
+
+// Posición de los caracteres acentuados en CP850/CP858 (las más usadas en España)
+var CP850 = {
+  'Ç':128,'ü':129,'é':130,'â':131,'ä':132,'à':133,'å':134,'ç':135,'ê':136,'ë':137,
+  'è':138,'ï':139,'î':140,'ì':141,'Ä':142,'Å':143,'É':144,'æ':145,'Æ':146,'ô':147,
+  'ö':148,'ò':149,'û':150,'ù':151,'ÿ':152,'Ö':153,'Ü':154,'ø':155,'£':156,'Ø':157,
+  'á':160,'í':161,'ó':162,'ú':163,'ñ':164,'Ñ':165,'ª':166,'º':167,'¿':168,
+  'Á':181,'Â':182,'À':183,'©':184,'Ã':199,'Í':214,'Ó':224,'Ú':233,'Õ':229,
+  '€':213
+};
+
+function escposTexto(txt){
+  var pagina = state.settings.escposPagina;
+  if(pagina === undefined) pagina = 19;
+  var salida = '';
+  txt = String(txt);
+
+  if(pagina === -1){
+    // Modo ASCII: se sustituyen los acentos
+    for(var i=0;i<txt.length;i++){
+      var c = txt.charAt(i);
+      salida += (SIN_ACENTOS[c] !== undefined) ? SIN_ACENTOS[c] : (txt.charCodeAt(i) < 128 ? c : '?');
+    }
+    return salida;
+  }
+
+  for(var j=0;j<txt.length;j++){
+    var ch = txt.charAt(j), cod = txt.charCodeAt(j);
+    if(cod < 128){ salida += ch; continue; }
+    if(pagina === 16){
+      // CP1252 coincide con Unicode hasta 255
+      salida += (cod <= 255) ? String.fromCharCode(cod)
+              : (SIN_ACENTOS[ch] !== undefined ? SIN_ACENTOS[ch] : '?');
+    } else if(CP850[ch] !== undefined){
+      salida += String.fromCharCode(CP850[ch]);
+    } else {
+      salida += (SIN_ACENTOS[ch] !== undefined) ? SIN_ACENTOS[ch] : '?';
+    }
+  }
+  return salida;
+}
+
+// --- Constructor de comandos ---
+function ESCPOS(){
+  this.b = '';
+  this.ancho = state.settings.escposColumnas || 48;
+}
+ESCPOS.prototype.raw = function(){ for(var i=0;i<arguments.length;i++) this.b += String.fromCharCode(arguments[i]); return this; };
+ESCPOS.prototype.init = function(){
+  this.raw(27,64);                                  // ESC @ — reiniciar
+  var p = state.settings.escposPagina;
+  if(p === undefined) p = 19;
+  if(p >= 0) this.raw(27,116,p);                    // ESC t n — página de códigos
+  return this;
+};
+ESCPOS.prototype.texto = function(t){ this.b += escposTexto(t); return this; };
+ESCPOS.prototype.linea = function(t){ return this.texto(t === undefined ? '' : t).raw(10); };
+ESCPOS.prototype.centrar = function(){ return this.raw(27,97,1); };
+ESCPOS.prototype.izquierda = function(){ return this.raw(27,97,0); };
+ESCPOS.prototype.derecha = function(){ return this.raw(27,97,2); };
+ESCPOS.prototype.negrita = function(on){ return this.raw(27,69, on?1:0); };
+ESCPOS.prototype.doble = function(on){ return this.raw(29,33, on?0x11:0); };  // GS ! — doble alto y ancho
+ESCPOS.prototype.altoDoble = function(on){ return this.raw(29,33, on?0x01:0); };
+ESCPOS.prototype.separador = function(car){
+  return this.linea(new Array(this.ancho+1).join(car || '-'));
+};
+// Dos columnas: etiqueta a la izquierda, importe a la derecha
+ESCPOS.prototype.fila = function(izq, der){
+  izq = String(izq); der = String(der);
+  var hueco = this.ancho - izq.length - der.length;
+  if(hueco < 1){
+    izq = izq.slice(0, Math.max(0, this.ancho - der.length - 1));
+    hueco = Math.max(1, this.ancho - izq.length - der.length);
+  }
+  return this.linea(izq + new Array(hueco+1).join(' ') + der);
+};
+ESCPOS.prototype.avanzar = function(n){ return this.raw(27,100, n||3); };
+ESCPOS.prototype.cortar = function(){ return this.raw(29,86,66,0); };          // GS V B — corte parcial
+ESCPOS.prototype.cajon = function(){ return this.raw(27,112,0,25,250); };      // ESC p — pulso al cajón
+ESCPOS.prototype.bytes = function(){ return this.b; };
+
+// --- Envío a RawBT ---
+function enviarARawBT(datos, etiqueta){
+  var b64;
+  try{
+    b64 = btoa(datos);
+  }catch(e){
+    showToast('No se pudieron codificar los datos de impresión.', 'err');
+    return false;
+  }
+
+  var url = 'rawbt:base64,' + b64;
+
+  // Dentro de Fully Kiosk, lanzar otra app requiere su interfaz JavaScript
+  if(typeof fully !== 'undefined' && typeof fully.startApplication === 'function'){
+    try{
+      fully.startApplication('ru.a402d.rawbtprinter', 'android.intent.action.VIEW', url);
+      return true;
+    }catch(e){ /* si falla, se intenta por navegación */ }
+  }
+
+  try{
+    window.location.href = url;
+    return true;
+  }catch(e){
+    showToast('No se pudo abrir RawBT. Compruébalo en Ajustes.', 'err');
+    return false;
+  }
+}
+
+// --- Ticket completo en ESC/POS ---
+function ticketESCPOS(ticketId){
+  var t = state.tickets.find(function(x){ return x.id === ticketId; });
+  if(!t) return null;
+  var lineas = state.sales.filter(function(s){ return s.ticketId === ticketId; });
+  var s = state.settings;
+  var ver = function(clave){ return s[clave] !== false; };
+
+  var p = new ESCPOS();
+  p.init().centrar();
+
+  if(ver('ticket_nombre') && s.nombreTienda){ p.negrita(true).altoDoble(true).linea(s.nombreTienda.toUpperCase()).altoDoble(false).negrita(false); }
+  if(ver('ticket_direccion') && s.direccion) p.linea(s.direccion);
+  if(ver('ticket_telefono')  && s.telefono)  p.linea('Tel. ' + s.telefono);
+  if(ver('ticket_email')     && s.email)     p.linea(s.email);
+  if(ver('ticket_web')       && s.web)       p.linea(s.web);
+  if(ver('ticket_nif')       && s.nif)       p.linea('NIF: ' + s.nif);
+  if((s.ticket_cabecera||'').trim()) p.linea(s.ticket_cabecera.trim());
+
+  p.izquierda().separador('=');
+  if(ver('ticket_numero')) p.fila('Ticket', t.numSerieFactura || '');
+  p.fila('Fecha', new Date(t.fecha).toLocaleString('es-ES'));
+  p.separador('=');
+
+  lineas.forEach(function(ln){
+    p.negrita(true).linea((ln.marca||'') + ' ' + (ln.modelo||'')).negrita(false);
+    p.fila('  Talla ' + ln.talla + ' x' + ln.cantidad, eur(ln.total||0));
+    if(ln.promoTipo && ver('ticket_promos')){
+      p.linea('  Promo ' + (ln.promoTipo==='porcentaje' ? '-'+ln.promoValor+'%' : '-'+eur(ln.promoValor)));
+    }
+  });
+
+  p.separador('-');
+  if(t.descuento && ver('ticket_descuentos')) p.fila('Descuento', '-' + eur(t.descuento.importe||0));
+  if(ver('ticket_desgloseIva')){
+    p.fila('Base imponible', eur(t.subtotal||0));
+    p.fila('IVA (' + (s.ivaRate||21) + '%)', eur(t.iva||0));
+  }
+  p.negrita(true).doble(true).fila('TOTAL', eur(t.total||0)).doble(false).negrita(false);
+  if(ver('ticket_formaPago')) p.fila('Forma de pago', metodoPagoLabel(t.metodoPago));
+
+  var pie = (s.ticket_pie !== undefined ? s.ticket_pie : '¡Gracias por su compra!').trim();
+  if(pie){ p.separador('-').centrar().linea(pie).izquierda(); }
+
+  p.avanzar(4);
+  if(s.escposCajon === true && t.metodoPago === 'efectivo') p.cajon();
+  if(s.escposCortar !== false) p.cortar();
+
+  return p.bytes();
+}
+
+function imprimirTicketESCPOS(ticketId){
+  var datos = ticketESCPOS(ticketId);
+  if(!datos){ showToast('No se encontró el ticket.', 'err'); return; }
+  if(enviarARawBT(datos, 'Ticket')) showToast('Ticket enviado a la impresora', 'ok');
+}
+
+// Abrir el cajón sin imprimir nada
+function abrirCajonESCPOS(){
+  var p = new ESCPOS();
+  p.init().cajon();
+  if(enviarARawBT(p.bytes(), 'Cajón')) showToast('Abriendo el cajón...', 'ok');
+}
+
+// Ticket de prueba: sirve para elegir la página de códigos correcta
+function pruebaESCPOS(){
+  var p = new ESCPOS();
+  p.init().centrar().negrita(true).altoDoble(true).linea('PRUEBA DE IMPRESION').altoDoble(false).negrita(false);
+  p.linea('Mil Pasos v' + APP_VERSION).izquierda().separador('=');
+  p.linea('Acentos: aeiou AEIOU');
+  p.linea('Enes: nano NINO');
+  p.linea('Vocales: áéíóú ÁÉÍÓÚ');
+  p.linea('Enie: ñ Ñ  ·  Euro: €');
+  p.linea('Signos: ¿? ¡! ºª');
+  p.separador('-');
+  p.linea('Columnas configuradas: ' + p.ancho);
+  p.linea('1234567890'.repeat(Math.ceil(p.ancho/10)).slice(0, p.ancho));
+  p.separador('-');
+  p.negrita(true).fila('TOTAL DE PRUEBA', eur(123.45)).negrita(false);
+  p.avanzar(4);
+  if(state.settings.escposCortar !== false) p.cortar();
+  if(enviarARawBT(p.bytes(), 'Prueba')) showToast('Prueba enviada. Si los acentos salen mal, cambia la página de códigos.', 'ok', true);
+}
+
 function imprimirTicket(){
+  // Si está activada la impresión térmica, se envía en ESC/POS a RawBT.
+  // Es mucho más ligero que mandar el ticket como imagen.
+  if(state.settings.escposActivo === true && _ticketAbiertoId){
+    imprimirTicketESCPOS(_ticketAbiertoId);
+    return;
+  }
   const receiptEl = document.getElementById("receipt-printable");
   if(!receiptEl){ showToast("No se encontró el ticket para imprimir.", "err"); return; }
   imprimirHTML('<div class="paper">' + receiptEl.innerHTML + '</div>', 'Ticket');
 }
 
+var _ticketAbiertoId = null;
 function abrirTicketImprimible(ticketId, autoImprimir){
+  _ticketAbiertoId = ticketId;
   const t = state.tickets.find(x=>x.id===ticketId);
   if(!t) return;
   const lineas = state.sales.filter(s=>s.ticketId===ticketId);
@@ -5501,9 +5896,6 @@ function comprobarVersionPublicada(){
       }
       try{ sessionStorage.setItem('mp-refresco-forzado','1'); }catch(e){}
 
-      // El aviso se guarda para mostrarlo tras la recarga: si se mostrara
-      // ahora, desaparecería con la propia recarga y no te enterarías.
-      try{ sessionStorage.setItem('mp-actualizado-desde', APP_VERSION); }catch(e){}
       showToast('Actualizando a la versión ' + publicada + '...', 'ok', false);
 
       // Vaciar las cachés del navegador y volver a cargar
@@ -5531,14 +5923,25 @@ document.querySelectorAll(".tabs button").forEach(btn=>{
 // Arrancar Firebase y luego cargar el estado
 iniciarFirebase();
 loadState().then(function(){
-  // Si acabamos de actualizarnos, avisar de que ya estamos en la nueva versión
+  // Aviso de actualización. Se compara con la última versión que se ejecutó
+  // en ESTE dispositivo, guardada en localStorage. Así funciona sea quien sea
+  // quien haya provocado la recarga: la comprobación de versión, el Service
+  // Worker al activarse, o un refresco manual. Antes solo cubría el primer
+  // caso y las actualizaciones del Service Worker pasaban desapercibidas.
   try{
-    var desde = sessionStorage.getItem('mp-actualizado-desde');
-    if(desde){
-      sessionStorage.removeItem('mp-actualizado-desde');
-      sessionStorage.removeItem('mp-refresco-forzado');
+    var CLAVE_VER = STORAGE_KEY + '-ultima-version';
+    var anterior = localStorage.getItem(CLAVE_VER);
+    localStorage.setItem(CLAVE_VER, APP_VERSION);
+    try{ sessionStorage.removeItem('mp-actualizado-desde'); sessionStorage.removeItem('mp-refresco-forzado'); }catch(e){}
+
+    if(anterior && anterior !== APP_VERSION){
       setTimeout(function(){
-        showToast('✅ Aplicación actualizada: versión ' + desde + ' → ' + APP_VERSION, 'ok', true);
+        showToast('✅ Aplicación actualizada: ' + anterior + ' → ' + APP_VERSION, 'ok', true);
+      }, 900);
+    } else if(!anterior){
+      // Primera vez en este dispositivo: no es una actualización
+      setTimeout(function(){
+        showToast('Mil Pasos v' + APP_VERSION + ' lista en este dispositivo', 'ok');
       }, 900);
     }
   }catch(e){}
