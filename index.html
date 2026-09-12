@@ -415,7 +415,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "9.9";
+const APP_VERSION = "10.0";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -1177,7 +1177,7 @@ function defaultState(){
     avisos: [],
     settings: {
       contadoresSerie: {},
-      escposActivo: false, escposPagina: 19, escposColumnas: 48, escposCortar: true, escposCajon: true,
+      escposActivo: false, rawbtMetodo: "auto", escposPagina: 19, escposColumnas: 48, escposCortar: true, escposCajon: true,
       prefijoEAN: "20", contadorEAN: 0, autoEAN: true, bloqueEAN: null,
       etiqFormato: "apli01787", etiqOffsetX: 0, etiqOffsetY: 0, etiqEscala: 100,
       ivaRate:21, recargoEquivalencia:5.2, tallaMin:35, tallaMax:46,
@@ -2559,7 +2559,16 @@ function renderImpresoraTermica(){
     +   '</label>'
 
     +   (activo ? (
-          '<div class="field"><label>Página de códigos (para los acentos)</label>'
+          '<div class="field"><label>Método de envío a RawBT</label>'
+          + '<select style="width:100%" onchange="state.settings.rawbtMetodo=this.value; saveState(); render();">'
+          + METODOS_RAWBT.map(function(m){
+              var sel = (s.rawbtMetodo||'auto')===m.id ? ' selected' : '';
+              var disp = (m.id==='fully' && typeof fully==='undefined') ? ' — no disponible aquí' : '';
+              return '<option value="'+m.id+'"'+sel+'>'+escapeHtml(m.nombre+disp)+'</option>';
+            }).join('')
+          + '</select></div>'
+
+          + '<div class="field"><label>Página de códigos (para los acentos)</label>'
           + '<select style="width:100%" onchange="state.settings.escposPagina=parseInt(this.value); saveState(); render();">'
           + PAGINAS_CODIGOS.map(function(p){
               return '<option value="'+p.id+'"'+(pagina===p.id?' selected':'')+'>'+escapeHtml(p.nombre)+'</option>';
@@ -3546,33 +3555,83 @@ ESCPOS.prototype.cajon = function(){ return this.raw(27,112,0,25,250); };      /
 ESCPOS.prototype.bytes = function(){ return this.b; };
 
 // --- Envío a RawBT ---
-function enviarARawBT(datos, etiqueta){
-  var b64;
+// Hay tres formas de llamarla y cuál funciona depende del navegador:
+//  1. rawbt:  → es el método documentado para webs, pero los WebView lo
+//     bloquean si la app anfitriona no autoriza ese esquema.
+//  2. intent: → sintaxis nativa de Android con la acción y el extra que
+//     documenta RawBT. La admite Chrome y muchos WebView.
+//  3. fully.startApplication() → solo dentro de Fully Kiosk, y requiere
+//     activar Advanced Web Settings → Enable JavaScript Interface.
+var METODOS_RAWBT = [
+  {id:'auto',   nombre:'Automático (prueba las tres)'},
+  {id:'fully',  nombre:'Fully Kiosk (interfaz JavaScript)'},
+  {id:'intent', nombre:'Intent de Android'},
+  {id:'url',    nombre:'Dirección rawbt:'}
+];
+
+var RAWBT_PAQUETE = 'ru.a402d.rawbtprinter';
+var RAWBT_ACCION  = 'ru.a402d.rawbtprinter.action.PRINT_RAWBT';
+var RAWBT_EXTRA   = 'ru.a402d.rawbtprinter.extra.DATA';
+
+function _rawbtBase64(datos){
+  try{ return btoa(datos); }
+  catch(e){ showToast('No se pudieron codificar los datos de impresión.', 'err'); return null; }
+}
+
+// Vía 1: dirección rawbt:
+function _rawbtPorUrl(b64){
+  try{ window.location.href = 'rawbt:base64,' + b64; return true; }catch(e){ return false; }
+}
+
+// Vía 2: intent de Android con la acción y el extra documentados
+function _rawbtPorIntent(b64){
   try{
-    b64 = btoa(datos);
-  }catch(e){
-    showToast('No se pudieron codificar los datos de impresión.', 'err');
-    return false;
-  }
-
-  var url = 'rawbt:base64,' + b64;
-
-  // Dentro de Fully Kiosk, lanzar otra app requiere su interfaz JavaScript
-  if(typeof fully !== 'undefined' && typeof fully.startApplication === 'function'){
-    try{
-      fully.startApplication('ru.a402d.rawbtprinter', 'android.intent.action.VIEW', url);
-      return true;
-    }catch(e){ /* si falla, se intenta por navegación */ }
-  }
-
-  try{
+    var url = 'intent:#Intent'
+      + ';action=' + RAWBT_ACCION
+      + ';package=' + RAWBT_PAQUETE
+      + ';S.' + RAWBT_EXTRA + '=' + encodeURIComponent('base64,' + b64)
+      + ';end';
     window.location.href = url;
     return true;
-  }catch(e){
-    showToast('No se pudo abrir RawBT. Compruébalo en Ajustes.', 'err');
+  }catch(e){ return false; }
+}
+
+// Vía 3: interfaz JavaScript de Fully Kiosk
+function _rawbtPorFully(b64){
+  if(typeof fully === 'undefined' || typeof fully.startApplication !== 'function') return false;
+  try{
+    fully.startApplication(RAWBT_PAQUETE, 'android.intent.action.VIEW', 'rawbt:base64,' + b64);
+    return true;
+  }catch(e){ return false; }
+}
+
+function enviarARawBT(datos, etiqueta){
+  var b64 = _rawbtBase64(datos);
+  if(!b64) return false;
+
+  var metodo = state.settings.rawbtMetodo || 'auto';
+  var usado = null;
+
+  if(metodo === 'fully')       { if(_rawbtPorFully(b64))  usado = 'Fully Kiosk'; }
+  else if(metodo === 'intent') { if(_rawbtPorIntent(b64)) usado = 'intent'; }
+  else if(metodo === 'url')    { if(_rawbtPorUrl(b64))    usado = 'rawbt:'; }
+  else {
+    // Automático: de la más fiable a la más genérica
+    if(_rawbtPorFully(b64))       usado = 'Fully Kiosk';
+    else if(_rawbtPorIntent(b64)) usado = 'intent';
+    else if(_rawbtPorUrl(b64))    usado = 'rawbt:';
+  }
+
+  if(!usado){
+    showToast('No se pudo abrir RawBT. Prueba otro método de envío en Informes.', 'err');
     return false;
   }
+
+  _ultimoEnvioRawBT = { via: usado, bytes: datos.length, hora: new Date() };
+  return true;
 }
+
+var _ultimoEnvioRawBT = null;
 
 // --- Ticket completo en ESC/POS ---
 function ticketESCPOS(ticketId){
@@ -3628,7 +3687,7 @@ function ticketESCPOS(ticketId){
 function imprimirTicketESCPOS(ticketId){
   var datos = ticketESCPOS(ticketId);
   if(!datos){ showToast('No se encontró el ticket.', 'err'); return; }
-  if(enviarARawBT(datos, 'Ticket')) showToast('Ticket enviado a la impresora', 'ok');
+  if(enviarARawBT(datos, 'Ticket')) showToast('Ticket enviado por ' + _ultimoEnvioRawBT.via + ' (' + _ultimoEnvioRawBT.bytes + ' bytes)', 'ok');
 }
 
 // Abrir el cajón sin imprimir nada
@@ -3655,7 +3714,7 @@ function pruebaESCPOS(){
   p.negrita(true).fila('TOTAL DE PRUEBA', eur(123.45)).negrita(false);
   p.avanzar(4);
   if(state.settings.escposCortar !== false) p.cortar();
-  if(enviarARawBT(p.bytes(), 'Prueba')) showToast('Prueba enviada. Si los acentos salen mal, cambia la página de códigos.', 'ok', true);
+  if(enviarARawBT(p.bytes(), 'Prueba')) showToast('Prueba enviada por ' + _ultimoEnvioRawBT.via + '. Si no sale papel, cambia el método de envío.', 'ok', true);
 }
 
 function imprimirTicket(){
