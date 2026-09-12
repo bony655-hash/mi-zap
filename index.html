@@ -415,7 +415,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "10.0";
+const APP_VERSION = "10.1";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -1326,7 +1326,7 @@ async function loadState(){
   if(!state.devoluciones) state.devoluciones = [];
   // Compatibilidad: tickets creados antes de añadir estadoPago
   if(state.tickets) state.tickets.forEach(t=>{ if(!t.estadoPago) t.estadoPago='completada'; if(t.datosCliente===undefined) t.datosCliente=null; });
-  intentarReconectarCajon();
+  if(state.settings.escposActivo !== true) intentarReconectarCajon();
   document.getElementById("storeName").textContent = (state.settings.nombreTienda || "Mil Pasos").toUpperCase();
   const verTag = document.getElementById("appVersionTag");
   if(verTag) verTag.textContent = "v" + APP_VERSION;
@@ -2994,27 +2994,13 @@ function renderInformes(){
         <input type="text" style="width:100%" value="${escapeAttr(state.settings.web||'')}" placeholder="www.mitienda.com · @mitienda" onchange="state.settings.web=this.value; saveState()">
       </div>
       <div class="field">
-        <label>Serie de factura</label>
-        <input type="text" style="width:100%" value="${escapeAttr(state.settings.serieFactura)}" placeholder="Ej. T" onchange="state.settings.serieFactura=this.value.trim()||'T'; saveState()">
-      </div>
-      <div class="field">
         <label style="display:flex;align-items:center;gap:8px;text-transform:none;">
           <input type="checkbox" ${state.settings.autoImprimir!==false?'checked':''} onchange="state.settings.autoImprimir=this.checked; saveState()" style="width:auto;">
           Imprimir el ticket automáticamente al pulsar "Cobrar"
         </label>
-      </div>
-      <div class="field">
-        <label style="margin-bottom:6px;">Cajón portamonedas / impresora con cajón (USB, solo Chrome/Edge de escritorio)</label>
-        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-          <span style="font-size:13px;color:var(--ink-dim);">
-            Estado: ${(cajonBTChar||cajonPort)? `<b style="color:var(--teal);">${cajonBTChar?'🔵 Bluetooth conectado':'🔌 USB conectado'}</b>` : `<b style="color:var(--red);">No conectado</b>`}
-          </span>
-          <button type="button" class="btn small secondary" onclick="conectarCajonUSB()">🔌 Conectar USB</button>
-          <button type="button" class="btn small secondary" onclick="conectarCajonBluetooth()">🔵 Conectar Bluetooth</button>
-          ${(cajonBTChar||cajonPort)? `<button type="button" class="btn small secondary" onclick="desconectarCajon()">Desconectar</button>` : ""}
-        </div>
         <div class="note" style="margin-top:8px;font-size:11.5px;">
-          <b>USB</b>: Chrome/Edge escritorio, conecta el puerto COM/USB de la impresora. <b>Bluetooth</b>: Chrome Android o escritorio con impresora BLE.
+          La impresora y el cajón se configuran más abajo, en <b>🖨️ Impresora térmica</b>.
+          La serie del ticket se asigna sola según el mes: 26E, 26F, 26M…
         </div>
       </div>
       <div class="field-row">
@@ -3334,6 +3320,11 @@ async function intentarReconectarCajon(){
 
 // ---- ABRIR CAJÓN: envía el comando ESC/POS por el canal disponible ----
 async function abrirCajon(){
+  // Si la impresión térmica está activa, el cajón se abre por la impresora,
+  // que es como está conectado. La vía antigua (Web Serial / Bluetooth) se
+  // conserva para el PC, donde sí está disponible.
+  if(state.settings.escposActivo === true){ abrirCajonESCPOS(); return; }
+
   var CMD = new Uint8Array([0x1B, 0x70, 0x00, 0x19, 0xFA]);
 
   // Bluetooth primero
@@ -5721,7 +5712,9 @@ async function completarVenta(){
     saveState();
     render();
     showToast("✅ Venta completada — " + ticket.numSerieFactura, "ok");
-    if(state.settings.cajonHabilitado) abrirCajon();
+    // Con impresión térmica el pulso al cajón viaja dentro del ticket,
+    // así que no hace falta un envío aparte.
+    if(state.settings.escposActivo !== true && state.settings.cajonHabilitado) abrirCajon();
     if(state.settings.autoImprimir!==false) setTimeout(function(){ abrirTicketImprimible(ticket.id, true); }, 300);
   }catch(e){
     console.error(e);
