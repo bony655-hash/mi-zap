@@ -415,7 +415,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "9.4";
+const APP_VERSION = "9.6";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -2947,7 +2947,7 @@ function abrirCalculadoraCambio(){
           <input type="number" id="calc-pago" step="0.01" min="0"
             placeholder="0,00"
             style="width:100%;font-size:24px;font-weight:700;text-align:right;color:var(--coral);"
-            oninput="actualizarCambio()" autofocus>
+            oninput="actualizarCambio()">
         </div>
 
         <!-- Teclado numérico rápido para pantalla táctil -->
@@ -3184,55 +3184,97 @@ async function abrirCajon(){
   showToast("Sin conexión directa con la caja. Conecta la impresora primero.", "err");
 }
 
+function estilosTicket(){
+  return `
+    /* Ancho estándar de rollo térmico de recibo (80 mm) */
+    @page{ size: 80mm auto; margin: 0; }
+    html,body{ margin:0; padding:0; background:#fff; }
+    .paper{
+      width:80mm; box-sizing:border-box; padding:3mm 4mm; background:#fff;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size:11px; line-height:1.45; color:#000;
+    }
+    hr{border:none;border-top:1px dashed #000;margin:6px 0;}
+    .r-center{text-align:center;}
+    .r-bold{font-weight:bold;}
+    .r-row{display:flex;justify-content:space-between;gap:8px;}
+    .r-total{font-size:13px;font-weight:bold;border-top:1px solid #000;margin-top:4px;padding-top:4px;}
+    .r-item{margin:5px 0;}
+    .r-item-name{font-weight:bold;}
+    .r-item-row{display:flex;justify-content:space-between;}
+    .r-promo{font-size:9.5px;color:#333;}
+    .r-promo s{color:#777;}
+    img{display:block;margin:0 auto;}
+    @media print{ .paper{width:100%;padding:0 2mm;} }
+  `;
+}
+
+// Imprime usando un iframe oculto en la propia página.
+// Antes se abría una ventana emergente, y los navegadores en modo kiosco
+// (Fully Kiosk) y muchos móviles las bloquean: salía "pop-ups disabled".
+// El iframe no necesita ningún permiso y funciona en todas partes.
+function imprimirHTML(contenidoHTML, etiqueta){
+  var previo = document.getElementById('marco-impresion');
+  if(previo && previo.parentNode) previo.parentNode.removeChild(previo);
+
+  var marco = document.createElement('iframe');
+  marco.id = 'marco-impresion';
+  marco.setAttribute('aria-hidden','true');
+  marco.style.cssText = 'position:fixed;left:-10000px;top:0;width:80mm;height:100vh;border:0;visibility:hidden;';
+  document.body.appendChild(marco);
+
+  var doc = marco.contentWindow.document;
+  doc.open();
+  doc.write('<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>'
+    + (etiqueta || 'Ticket') + '</title><style>' + estilosTicket() + '</style></head><body>'
+    + contenidoHTML + '</body></html>');
+  doc.close();
+
+  var lanzar = function(){
+    try{
+      marco.contentWindow.focus();
+      marco.contentWindow.print();
+    }catch(e){
+      console.error('Error al imprimir:', e);
+      showToast('No se pudo abrir el diálogo de impresión.', 'err');
+    }
+    // Retirar el iframe cuando el diálogo ya se ha mostrado
+    setTimeout(function(){ if(marco.parentNode) marco.parentNode.removeChild(marco); }, 60000);
+  };
+
+  // Dar tiempo a que carguen las imágenes del ticket antes de imprimir
+  if(marco.contentWindow.document.readyState === 'complete') setTimeout(lanzar, 250);
+  else marco.onload = function(){ setTimeout(lanzar, 250); };
+}
+
+// Igual que imprimirHTML pero para documentos que traen su propio <style>
+// (informe PDF, hoja de etiquetas). Sin ventanas emergentes.
+function imprimirDocumento(htmlCompleto, etiqueta){
+  var previo = document.getElementById('marco-impresion');
+  if(previo && previo.parentNode) previo.parentNode.removeChild(previo);
+
+  var marco = document.createElement('iframe');
+  marco.id = 'marco-impresion';
+  marco.setAttribute('aria-hidden','true');
+  marco.style.cssText = 'position:fixed;left:-10000px;top:0;width:210mm;height:100vh;border:0;visibility:hidden;';
+  document.body.appendChild(marco);
+
+  var doc = marco.contentWindow.document;
+  doc.open(); doc.write(htmlCompleto); doc.close();
+
+  var lanzar = function(){
+    try{ marco.contentWindow.focus(); marco.contentWindow.print(); }
+    catch(e){ console.error(e); showToast('No se pudo abrir el diálogo de impresión.', 'err'); }
+    setTimeout(function(){ if(marco.parentNode) marco.parentNode.removeChild(marco); }, 60000);
+  };
+  if(doc.readyState === 'complete') setTimeout(lanzar, 350);
+  else marco.onload = function(){ setTimeout(lanzar, 350); };
+}
+
 function imprimirTicket(){
   const receiptEl = document.getElementById("receipt-printable");
   if(!receiptEl){ showToast("No se encontró el ticket para imprimir.", "err"); return; }
-
-  let contenido = receiptEl.innerHTML;
-  const ventana = window.open("", "_blank", "width=380,height=650");
-  if(!ventana){
-    showToast("El navegador ha bloqueado la ventana de impresión. Permite las ventanas emergentes para este sitio.", "err");
-    return;
-  }
-  ventana.document.open();
-  ventana.document.write(`
-    <!DOCTYPE html>
-    <html lang="es">
-    <head>
-      <meta charset="UTF-8">
-      <title>Ticket</title>
-      <style>
-        /* Ancho estándar de rollo térmico de recibo (80 mm) */
-        @page{ size: 80mm auto; margin: 0; }
-        html,body{ margin:0; padding:0; background:#ccc; }
-        body{ display:flex; justify-content:center; }
-        .paper{
-          width:80mm; box-sizing:border-box; padding:3mm 4mm; background:#fff;
-          font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-          font-size:11px; line-height:1.45; color:#000;
-        }
-        hr{border:none;border-top:1px dashed #000;margin:6px 0;}
-        .r-center{text-align:center;}
-        .r-bold{font-weight:bold;}
-        .r-row{display:flex;justify-content:space-between;gap:8px;}
-        .r-total{font-size:13px;font-weight:bold;border-top:1px solid #000;margin-top:4px;padding-top:4px;}
-        .r-item{margin:5px 0;}
-        .r-item-name{font-weight:bold;}
-        .r-item-row{display:flex;justify-content:space-between;}
-        .r-promo{font-size:9.5px;color:#333;}
-        .r-promo s{color:#777;}
-        img{display:block;margin:0 auto;}
-        @media print{ html,body{background:#fff;} .paper{width:100%;padding:0 2mm;} }
-      </style>
-    </head>
-    <body><div class="paper">${contenido}</div></body>
-    </html>
-  `);
-  ventana.document.close();
-
-  const lanzarImpresion = () => { try{ ventana.focus(); ventana.print(); }catch(e){ console.error(e); } };
-  if(ventana.document.readyState === "complete"){ setTimeout(lanzarImpresion, 150); }
-  else { ventana.onload = () => setTimeout(lanzarImpresion, 150); }
+  imprimirHTML('<div class="paper">' + receiptEl.innerHTML + '</div>', 'Ticket');
 }
 
 function abrirTicketImprimible(ticketId, autoImprimir){
@@ -3640,12 +3682,7 @@ function exportarPDF(){
 </body>
 </html>`;
 
-  const ventana = window.open("", "_blank", "width=900,height=700");
-  if(!ventana){ showToast("El navegador bloqueó la ventana. Permite las ventanas emergentes.", "err"); return; }
-  ventana.document.open();
-  ventana.document.write(html);
-  ventana.document.close();
-  setTimeout(()=>{ ventana.focus(); ventana.print(); }, 400);
+  imprimirDocumento(html, "Informe");
 }
 
 function exportarCopiaSeguridad(){
@@ -4347,10 +4384,7 @@ function imprimirHojaEtiquetas(){
   var resto = etiquetas.length % porHoja;
   if(resto) for(var i=0;i<porHoja-resto;i++) celdas += '<div class="etq etq-vacia"></div>';
 
-  var ventana = window.open("", "_blank", "width=820,height=900");
-  if(!ventana){ showToast("El navegador ha bloqueado la ventana. Permite las ventanas emergentes.", "err"); return; }
-  ventana.document.open();
-  ventana.document.write(`
+  var htmlEtiquetas = `
     <!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Etiquetas</title>
     <style>
       @page{ size: A4 portrait; margin: 0; }
@@ -4377,15 +4411,10 @@ function imprimirHojaEtiquetas(){
       .barra-no-print button{padding:8px 18px;font-size:14px;cursor:pointer;margin-left:10px;}
       @media print{ .barra-no-print{display:none;} html,body{background:#fff;} .hoja{margin:0;} }
     </style></head><body>
-    <div class="barra-no-print">
-      ${etiquetas.length} etiqueta(s) · ${Math.ceil(etiquetas.length/porHoja)} hoja(s) A4 · ${fmt.nombre}
-      <button onclick="window.print()">🖨️ Imprimir</button>
-    </div>
     <div class="hoja">${celdas}</div>
     </body></html>
-  `);
-  ventana.document.close();
-  ventana.focus();
+  `;
+  imprimirDocumento(htmlEtiquetas, "Etiquetas");
   closeModal();
 }
 
@@ -5116,6 +5145,17 @@ function borrarEfectivo(total){
   calcularCambioEfectivo(total);
 }
 
+// Detecta pantalla táctil de forma fiable. Se usa para no enfocar campos al
+// abrir un cuadro: en táctil el teclado saltaría solo y taparía los botones.
+function esPantallaTactil(){
+  try{
+    if(navigator.maxTouchPoints !== undefined) return navigator.maxTouchPoints > 0;
+    if(navigator.msMaxTouchPoints !== undefined) return navigator.msMaxTouchPoints > 0;
+    if(window.matchMedia) return window.matchMedia('(pointer: coarse)').matches;
+  }catch(e){}
+  return 'ontouchstart' in window;
+}
+
 function abrirModalEfectivo(totalACobrar){
   document.getElementById('modal-root').innerHTML = `
     <div class="modal-overlay">
@@ -5129,7 +5169,7 @@ function abrirModalEfectivo(totalACobrar){
           <label>El cliente entrega (€)</label>
           <input type="number" id="ef-pago" step="0.01" min="0" placeholder="0,00"
             style="width:100%;font-size:26px;font-weight:700;text-align:right;"
-            oninput="calcularCambioEfectivo(${totalACobrar})" autofocus>
+            oninput="calcularCambioEfectivo(${totalACobrar})">
         </div>
 
         <div style="margin-bottom:6px;font-size:11px;font-weight:700;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.5px;">Billetes</div>
@@ -5179,7 +5219,12 @@ function abrirModalEfectivo(totalACobrar){
     </div>
   `;
   // Si el total exacto es redondo, permitir cobrar sin entrada
-  setTimeout(function(){ var inp=document.getElementById('ef-pago'); if(inp) inp.focus(); }, 50);
+  // No se enfoca el campo al abrir: en pantalla táctil el teclado saltaría
+  // solo y tapa los botones de billetes. Aparece al tocar el campo.
+  // En escritorio sí interesa, para poder teclear directamente.
+  if(!esPantallaTactil()){
+    setTimeout(function(){ var inp=document.getElementById('ef-pago'); if(inp) inp.focus(); }, 50);
+  }
 }
 
 function calcularCambioEfectivo(total){
