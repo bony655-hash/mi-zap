@@ -415,7 +415,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "10.1";
+const APP_VERSION = "10.3";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -1177,7 +1177,7 @@ function defaultState(){
     avisos: [],
     settings: {
       contadoresSerie: {},
-      escposActivo: false, rawbtMetodo: "auto", escposPagina: 19, escposColumnas: 48, escposCortar: true, escposCajon: true,
+      escposActivo: false, rawbtMetodo: "auto", escposEuro: "eur", escposMargenPie: 6, escposPagina: 19, escposColumnas: 48, escposCortar: true, escposCajon: true,
       prefijoEAN: "20", contadorEAN: 0, autoEAN: true, bloqueEAN: null,
       etiqFormato: "apli01787", etiqOffsetX: 0, etiqOffsetY: 0, etiqEscala: 100,
       ivaRate:21, recargoEquivalencia:5.2, tallaMin:35, tallaMax:46,
@@ -1761,15 +1761,94 @@ function categoriasDelAlmacen(){
     .sort(function(a,b){ return a.etiqueta.localeCompare(b.etiqueta, 'es'); });
 }
 
-function renderAlmacen(){
+// Al escribir en el buscador NO se repinta toda la pestaña: se sustituye solo
+// la rejilla de productos. Si se repintara todo, el campo de texto se destruye
+// y se vuelve a crear, y en pantalla táctil eso cierra y reabre el teclado en
+// cada letra.
+var _temporizadorBusqueda = null;
+function buscarEnAlmacen(valor){
+  filterText = valor;
+  clearTimeout(_temporizadorBusqueda);
+  _temporizadorBusqueda = setTimeout(function(){
+    var rejilla = document.querySelector('#view .grid-cards');
+    if(!rejilla){ render(); return; }
+    rejilla.outerHTML = tarjetasAlmacen();
+    // Actualizar el contador de resultados si está visible
+    var cont = document.getElementById('almacen-contador');
+    if(cont) cont.textContent = productosFiltrados().length + ' artículo(s)';
+  }, 120);
+}
+
+// Filtrado y pintado de tarjetas, separados para poder refrescar solo la
+// rejilla al escribir en el buscador.
+function productosFiltrados(){
   const term = filterText.trim().toLowerCase();
-  const products = state.products.filter(p=>
+  return state.products.filter(p=>
     (!term || (p.marca+" "+p.modelo).toLowerCase().includes(term)) &&
     (almacenGeneroFiltro==='todos' || (p.genero||'unisex')===almacenGeneroFiltro) &&
     (almacenCategoriaFiltro==='todas'
       || (almacenCategoriaFiltro==='__sin__' ? !(p.categoria||'').trim() : (p.categoria||'').trim().toLowerCase()===almacenCategoriaFiltro))
   );
+}
 
+function tarjetasAlmacen(){
+  const products = productosFiltrados();
+  let cards = products.map(p=>{
+    const sizes = tallasParaTipo(p.tipoArticulo||'zapatos').map(t=>{
+      const info = tallaInfo(p,t);
+      const codeHint = info.barcode ? ("· cód. "+info.barcode) : "· sin código";
+      const etiqueta = (p.tipoArticulo==='bolsos') ? "Stock" : "Talla "+t;
+      return `<div class="${studClass(info.stock)}" title="${etiqueta}: ${info.stock} uds ${codeHint}">${t}<small>${info.stock}</small></div>`;
+    }).join("");
+    const base = precioBaseConPromo(p);
+    const pvp = precioConIVA(base);
+    const precioOriginal = precioConIVA(p.precioVenta);
+    const tienePromo = p.promo && p.promo.activo;
+    const promoBadge = tienePromo ? `<span class="promo-badge">PROMO -${p.promo.tipo==='porcentaje'?p.promo.valor+'%':eur(p.promo.valor)}</span>` : "";
+    const pvpDisplay = tienePromo
+      ? `<b><s style="color:var(--ink-dim);font-weight:400;">${eur(precioOriginal)}</s> ${eur(pvp)}</b>`
+      : `<b>${eur(pvp)}</b>`;
+    const costeReal = costeRealUnidad(p.precioCompra);
+    const benefReal = beneficioRealUnidad(p);
+    const margenReal = margenRealPct(p);
+    const re = state.settings.recargoEquivalencia || 5.2;
+    return `
+    <div class="ticket">
+      ${p.foto? `<div class="product-photo" style="background-image:url('${p.foto}')"></div>` : ""}
+      <div class="ticket-head">
+        <div style="display:flex;gap:12px;align-items:flex-start;">
+          ${p.foto? "" : `<div class="icon-chip tipo-${p.tipoArticulo||'zapatos'}" aria-hidden="true">${tipoIcono(p.tipoArticulo)}</div>`}
+          <div><h3>${escapeHtml(p.marca)}</h3><div class="modelo">${escapeHtml(p.modelo)}</div></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
+          <span class="tipo-badge">${tipoLabel(p.tipoArticulo)}</span>
+          <span class="genero-badge genero-${p.genero||'unisex'}">${generoLabel(p.genero)}</span>
+          ${p.categoria? `<span class="ticket-cat">${escapeHtml(p.categoria)}</span>`:""}
+        </div>
+      </div>
+      <div class="price-row">
+        <span>Neto proveedor: <b>${eur(p.precioCompra)}</b></span>
+        <span>Coste real (IVA ${state.settings.ivaRate||21}%+RE ${re}%): <b style="color:var(--red);">${eur(costeReal)}</b></span>
+        <span>PVP cobrado: ${pvpDisplay} ${promoBadge}</span>
+        <span>Beneficio real: <b style="color:${benefReal<0?'var(--red)':'var(--teal)'}">${eur(benefReal)}</b> · <b style="color:${margenReal<0?'var(--red)':'var(--teal)'}">${pct(margenReal)}</b></span>
+      </div>
+      <div class="studs">${sizes}</div>
+      <div style="font-size:12px;color:var(--ink-dim);">Stock total: <b>${stockTotal(p)}</b> pares</div>
+      <div class="ticket-actions">
+        <button class="btn small secondary" onclick="openProductForm('${p.id}')">Editar / códigos</button>
+        <button class="btn small danger" onclick="deleteProduct('${p.id}')">Eliminar</button>
+      </div>
+    </div>`;
+  }).join("");
+
+  if(products.length===0) cards = `<div class="empty-state">Aún no hay productos. Escanea una caja o añade el primer par manualmente.</div>`;
+
+  if(!cards) cards = `<div class="empty-state">Ningún artículo coincide con la búsqueda.</div>`;
+  return `<div class="grid-cards">${cards}</div>`;
+}
+
+function renderAlmacen(){
+  const products = productosFiltrados();
   let cards = products.map(p=>{
     const sizes = tallasParaTipo(p.tipoArticulo||'zapatos').map(t=>{
       const info = tallaInfo(p,t);
@@ -1831,7 +1910,7 @@ function renderAlmacen(){
       </div>
     </div>
     <div class="toolbar">
-      <input id="almacen-search" type="text" placeholder="Buscar por marca o modelo..." value="${escapeAttr(filterText)}" oninput="filterText=this.value;render()" style="min-width:240px;">
+      <input id="almacen-search" type="text" placeholder="Buscar por marca o modelo..." value="${escapeAttr(filterText)}" oninput="buscarEnAlmacen(this.value)" style="min-width:240px;">
       <select onchange="almacenGeneroFiltro=this.value; render();">
         <option value="todos" ${almacenGeneroFiltro==='todos'?'selected':''}>Todos los segmentos</option>
         <option value="mujer" ${almacenGeneroFiltro==='mujer'?'selected':''}>Mujer</option>
@@ -1851,8 +1930,21 @@ function renderAlmacen(){
       <button class="btn secondary" onclick="openEtiquetasModal()" title="Imprimir hoja A4 de etiquetas con código de barras">🏷️ Etiquetas</button>
       <button class="btn accent" onclick="openProductForm(null)">➕ Nuevo producto</button>
     </div>
-    <div class="grid-cards">${cards}</div>
+    ${tarjetasAlmacen()}
   `;
+}
+
+// Ver la foto del artículo a tamaño grande, útil para confirmar con el cliente
+function ampliarFoto(productId){
+  var p = state.products.find(function(x){ return x.id === productId; });
+  if(!p || !p.foto) return;
+  document.getElementById("modal-root").innerHTML =
+    '<div class="modal-overlay" onclick="closeModal()">'
+    + '<div class="modal" style="max-width:480px;text-align:center;">'
+    +   '<h3 style="margin-top:0;">' + escapeHtml(p.marca) + ' · ' + escapeHtml(p.modelo) + '</h3>'
+    +   '<img src="' + p.foto + '" style="width:100%;border-radius:var(--radius-sm);box-shadow:var(--shadow);">'
+    +   '<div class="modal-actions" style="justify-content:center;"><button class="btn secondary" onclick="closeModal()">Cerrar</button></div>'
+    + '</div></div>';
 }
 
 function renderVentas(){
@@ -1937,7 +2029,9 @@ function renderVentas(){
     <tr>
       <td>
         <div style="display:flex;align-items:center;gap:8px;">
-          ${p.foto? `<img src="${p.foto}" style="width:28px;height:28px;border-radius:8px;object-fit:cover;flex-shrink:0;">` : ""}
+          ${p.foto
+            ? `<img src="${p.foto}" style="width:76px;height:76px;border-radius:10px;object-fit:cover;flex-shrink:0;box-shadow:var(--shadow);cursor:zoom-in;" onclick="ampliarFoto('${p.id}')" title="Tocar para ampliar">`
+            : `<div style="width:76px;height:76px;border-radius:10px;flex-shrink:0;background:var(--canvas);display:flex;align-items:center;justify-content:center;font-size:32px;">${tipoIcono(p.tipoArticulo)}</div>`}
           <div>
             <div style="font-weight:700;">${escapeHtml(p.marca)}${(p.promo && p.promo.activo) ? `<span class="promo-badge" style="margin-left:6px;padding:2px 7px;font-size:9.5px;">🏷️ PROMO ${p.promo.tipo==='porcentaje' ? '−'+p.promo.valor+'%' : '−'+eur(p.promo.valor)}</span>` : ""}</div>
             <div style="font-size:11px;color:var(--ink-dim);">${escapeHtml(p.modelo)}${(p.promo && p.promo.activo) ? ` · ahorra ${eur((precioConIVA(p.precioVenta)-precioConIVA(baseConPromo))*line.cantidad)}` : ""}</div>
@@ -2575,7 +2669,20 @@ function renderImpresoraTermica(){
             }).join('')
           + '</select></div>'
 
+          + '<div class="field"><label>Símbolo del euro</label>'
+          + '<select style="width:100%" onchange="state.settings.escposEuro=this.value; saveState(); render();">'
+          + OPCIONES_EURO.map(function(o){
+              return '<option value="'+o.id+'"'+((s.escposEuro||'eur')===o.id?' selected':'')+'>'+escapeHtml(o.nombre)+'</option>';
+            }).join('')
+          + '</select></div>'
+
           + '<div class="field-row">'
+          +   '<div class="field"><label>Papel al final del ticket</label>'
+          +     '<select onchange="state.settings.escposMargenPie=parseInt(this.value); saveState();">'
+          +     [3,4,5,6,7,8,10].map(function(n){
+                  return '<option value="'+n+'"'+((s.escposMargenPie||6)===n?' selected':'')+'>'+n+' líneas</option>';
+                }).join('')
+          +     '</select></div>'
           +   '<div class="field"><label>Ancho en caracteres</label>'
           +     '<select onchange="state.settings.escposColumnas=parseInt(this.value); saveState(); render();">'
           +     [32,42,48].map(function(n){
@@ -3472,14 +3579,33 @@ var CP850 = {
   'ö':148,'ò':149,'û':150,'ù':151,'ÿ':152,'Ö':153,'Ü':154,'ø':155,'£':156,'Ø':157,
   'á':160,'í':161,'ó':162,'ú':163,'ñ':164,'Ñ':165,'ª':166,'º':167,'¿':168,
   'Á':181,'Â':182,'À':183,'©':184,'Ã':199,'Í':214,'Ó':224,'Ú':233,'Õ':229,
+  // El euro NO existe en CP850: solo en CP858, en la posición 213.
+  // En CP850 esa posición es la 'ı' sin punto, que se imprime como un "1".
   '€':213
 };
+
+// Cómo imprimir el símbolo del euro. Muchas impresoras no lo tienen en su
+// página de códigos y sacan un carácter equivocado, así que se puede elegir.
+var OPCIONES_EURO = [
+  {id:'eur',    nombre:'EUR  (funciona siempre)'},
+  {id:'simbolo',nombre:'€  (solo si la impresora lo admite)'},
+  {id:'nada',   nombre:'Sin símbolo, solo la cifra'}
+];
 
 function escposTexto(txt){
   var pagina = state.settings.escposPagina;
   if(pagina === undefined) pagina = 19;
   var salida = '';
   txt = String(txt);
+
+  // Sustituir el euro antes de nada, según lo configurado
+  var modoEuro = state.settings.escposEuro || 'eur';
+  if(modoEuro === 'eur')       txt = txt.replace(/\s*€/g, ' EUR');
+  else if(modoEuro === 'nada') txt = txt.replace(/\s*€/g, '');
+  else if(pagina !== 19 && pagina !== 16){
+    // Se pidió el símbolo, pero la página elegida no lo tiene
+    txt = txt.replace(/\s*€/g, ' EUR');
+  }
 
   if(pagina === -1){
     // Modo ASCII: se sustituyen los acentos
@@ -3648,11 +3774,26 @@ function ticketESCPOS(ticketId){
   p.fila('Fecha', new Date(t.fecha).toLocaleString('es-ES'));
   p.separador('=');
 
+  var ahorroTotal = 0;
   lineas.forEach(function(ln){
     p.negrita(true).linea((ln.marca||'') + ' ' + (ln.modelo||'')).negrita(false);
     p.fila('  Talla ' + ln.talla + ' x' + ln.cantidad, eur(ln.total||0));
+
     if(ln.promoTipo && ver('ticket_promos')){
-      p.linea('  Promo ' + (ln.promoTipo==='porcentaje' ? '-'+ln.promoValor+'%' : '-'+eur(ln.promoValor)));
+      // Precio original tachado no existe en ESC/POS: se indica en texto
+      var origUnit  = precioConIVA(ln.precioOriginalUnit || 0);
+      var promoUnit = precioConIVA(ln.precioTrasPromoUnit || 0);
+      var ahorroLinea = Math.max(0, (origUnit - promoUnit) * (ln.cantidad || 1));
+      ahorroTotal += ahorroLinea;
+
+      p.linea('  Antes ' + eur(origUnit) + '/ud  ->  ahora ' + eur(promoUnit) + '/ud');
+      p.linea('  Promo ' + (ln.promoTipo==='porcentaje' ? '-'+ln.promoValor+'%' : '-'+eur(ln.promoValor))
+              + '   Ahorro ' + eur(ahorroLinea));
+    }
+
+    if(ln.descManualActivo && ver('ticket_descuentos')){
+      p.linea('  Dto. ' + (ln.descManualTipo==='porcentaje' ? '-'+ln.descManualValor+'%' : '-'+eur(ln.descManualValor))
+              + '   -' + eur(ln.descManualImporte || 0));
     }
   });
 
@@ -3663,12 +3804,15 @@ function ticketESCPOS(ticketId){
     p.fila('IVA (' + (s.ivaRate||21) + '%)', eur(t.iva||0));
   }
   p.negrita(true).doble(true).fila('TOTAL', eur(t.total||0)).doble(false).negrita(false);
+  if(ahorroTotal > 0 && ver('ticket_promos')){
+    p.separador('-').centrar().negrita(true).linea('HA AHORRADO ' + eur(ahorroTotal)).negrita(false).izquierda();
+  }
   if(ver('ticket_formaPago')) p.fila('Forma de pago', metodoPagoLabel(t.metodoPago));
 
   var pie = (s.ticket_pie !== undefined ? s.ticket_pie : '¡Gracias por su compra!').trim();
-  if(pie){ p.separador('-').centrar().linea(pie).izquierda(); }
+  if(pie){ p.linea().separador('-').linea().centrar().linea(pie).izquierda(); }
 
-  p.avanzar(4);
+  p.avanzar(state.settings.escposMargenPie || 6);
   if(s.escposCajon === true && t.metodoPago === 'efectivo') p.cajon();
   if(s.escposCortar !== false) p.cortar();
 
@@ -3703,7 +3847,7 @@ function pruebaESCPOS(){
   p.linea('1234567890'.repeat(Math.ceil(p.ancho/10)).slice(0, p.ancho));
   p.separador('-');
   p.negrita(true).fila('TOTAL DE PRUEBA', eur(123.45)).negrita(false);
-  p.avanzar(4);
+  p.avanzar(state.settings.escposMargenPie || 6);
   if(state.settings.escposCortar !== false) p.cortar();
   if(enviarARawBT(p.bytes(), 'Prueba')) showToast('Prueba enviada por ' + _ultimoEnvioRawBT.via + '. Si no sale papel, cambia el método de envío.', 'ok', true);
 }
