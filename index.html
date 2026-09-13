@@ -415,7 +415,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "10.3";
+const APP_VERSION = "10.6";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -1177,7 +1177,7 @@ function defaultState(){
     avisos: [],
     settings: {
       contadoresSerie: {},
-      escposActivo: false, rawbtMetodo: "auto", escposEuro: "eur", escposMargenPie: 6, escposPagina: 19, escposColumnas: 48, escposCortar: true, escposCajon: true,
+      escposActivo: false, rawbtMetodo: "auto", escposEuro: "eur", escposMargenPie: 6, escposLogo: true, escposPagina: 19, escposColumnas: 48, escposCortar: true, escposCajon: true,
       prefijoEAN: "20", contadorEAN: 0, autoEAN: true, bloqueEAN: null,
       etiqFormato: "apli01787", etiqOffsetX: 0, etiqOffsetY: 0, etiqEscala: 100,
       ivaRate:21, recargoEquivalencia:5.2, tallaMin:35, tallaMax:46,
@@ -2692,6 +2692,10 @@ function renderImpresoraTermica(){
           + '</div>'
 
           + '<label style="display:flex;align-items:center;gap:9px;font-size:13px;margin-bottom:6px;">'
+          +   '<input type="checkbox" ' + (s.escposLogo === true ? 'checked' : '') + ' '
+          +   'onchange="state.settings.escposLogo=this.checked; saveState();"> Imprimir el logotipo en la cabecera</label>'
+
+          + '<label style="display:flex;align-items:center;gap:9px;font-size:13px;margin-bottom:6px;">'
           +   '<input type="checkbox" ' + (s.escposCortar !== false ? 'checked' : '') + ' '
           +   'onchange="state.settings.escposCortar=this.checked; saveState();"> Cortar el papel al terminar</label>'
 
@@ -3557,12 +3561,22 @@ function imprimirDocumento(htmlCompleto, etiqueta){
 // Páginas de códigos habituales en impresoras térmicas. La correcta depende
 // del modelo, así que se elige en Ajustes y se comprueba con el ticket de prueba.
 var PAGINAS_CODIGOS = [
-  {id:19, nombre:'CP858 — Europa occidental con €  (recomendado)'},
-  {id:2,  nombre:'CP850 — Multilingüe'},
-  {id:16, nombre:'CP1252 — Windows Europa occidental'},
-  {id:0,  nombre:'CP437 — Estados Unidos'},
-  {id:-1, nombre:'Sin acentos (solo ASCII, funciona siempre)'}
+  {id:19, nombre:'CP858 — Europa occidental con € (la más habitual)', euro:213},
+  {id:16, nombre:'CP1252 — Windows Europa occidental', euro:128},
+  {id:32, nombre:'ISO 8859-15 — Latín 9 con €', euro:164},
+  {id:15, nombre:'ISO 8859-1 — Latín 1', euro:164},
+  {id:2,  nombre:'CP850 — Multilingüe (sin €)', euro:null},
+  {id:0,  nombre:'CP437 — Estados Unidos (sin €)', euro:null},
+  {id:-1, nombre:'Sin acentos (ASCII, funciona siempre)', euro:null}
 ];
+
+// Posición del € en la página elegida, o null si esa página no lo tiene
+function posicionEuro(){
+  var p = state.settings.escposPagina;
+  if(p === undefined) p = 19;
+  var f = PAGINAS_CODIGOS.find(function(x){ return x.id === p; });
+  return f ? f.euro : null;
+}
 
 // Equivalencias para cuando se imprime sin acentos
 var SIN_ACENTOS = {
@@ -3581,7 +3595,7 @@ var CP850 = {
   'Á':181,'Â':182,'À':183,'©':184,'Ã':199,'Í':214,'Ó':224,'Ú':233,'Õ':229,
   // El euro NO existe en CP850: solo en CP858, en la posición 213.
   // En CP850 esa posición es la 'ı' sin punto, que se imprime como un "1".
-  '€':213
+  // El euro se trata aparte, según la página elegida
 };
 
 // Cómo imprimir el símbolo del euro. Muchas impresoras no lo tienen en su
@@ -3602,23 +3616,31 @@ function escposTexto(txt){
   var modoEuro = state.settings.escposEuro || 'eur';
   if(modoEuro === 'eur')       txt = txt.replace(/\s*€/g, ' EUR');
   else if(modoEuro === 'nada') txt = txt.replace(/\s*€/g, '');
-  else if(pagina !== 19 && pagina !== 16){
-    // Se pidió el símbolo, pero la página elegida no lo tiene
+  else if(posicionEuro() === null){
+    // Se pidió el símbolo pero la página elegida no lo tiene
     txt = txt.replace(/\s*€/g, ' EUR');
   }
+  // Si la página sí lo tiene, el € se convierte dentro del bucle de abajo,
+  // para que el byte resultante no se vuelva a procesar.
 
   if(pagina === -1){
     // Modo ASCII: se sustituyen los acentos
     for(var i=0;i<txt.length;i++){
       var c = txt.charAt(i);
+      if(c === '€'){ salida += 'EUR'; continue; }
       salida += (SIN_ACENTOS[c] !== undefined) ? SIN_ACENTOS[c] : (txt.charCodeAt(i) < 128 ? c : '?');
     }
     return salida;
   }
 
+  var posEuro = posicionEuro();
   for(var j=0;j<txt.length;j++){
     var ch = txt.charAt(j), cod = txt.charCodeAt(j);
     if(cod < 128){ salida += ch; continue; }
+    if(ch === '€'){
+      salida += (posEuro !== null) ? String.fromCharCode(posEuro) : 'EUR';
+      continue;
+    }
     if(pagina === 16){
       // CP1252 coincide con Unicode hasta 255
       salida += (cod <= 255) ? String.fromCharCode(cod)
@@ -3630,6 +3652,20 @@ function escposTexto(txt){
     }
   }
   return salida;
+}
+
+// ---- LOGOTIPO EN EL TICKET ----
+// La silueta del tacón convertida a mapa de bits monocromo de 240×192,
+// en el formato GS v 0 que entienden las impresoras térmicas.
+// Son 5,7 KB: suficientemente pequeño para no desbordar el búfer.
+var LOGO_ESCPOS_B64 = "HXYwAB4AwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB/gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH/8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf/ngAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//zwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//54AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB//88AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD//+OAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH//+HAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH///DgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP///hwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf///w4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf///wcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA////4OAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA////8OAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB////+HAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB////+DgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/////BwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/////hwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/////g4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH/////wcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH/////4OAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH/////8OAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH/////8HAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/////+DgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/////+DgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP//////BwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP//////g4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP//////g4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP//////wcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP//////4OAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP//////4OAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP//////8HAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH//////+DAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH//////+DgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH///////BwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH///////BwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH///////g4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD///////wcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD///////wcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB///////4OAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB///////4GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB///////8HAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA///////+DgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA///////+DgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf///////BwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf///////A4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf///////g4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf///////wcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf///////wOAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP///////4OAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP///////4HAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP///////8DAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP///////8DgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH/gf////+BwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH/AH////+AwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH/AB/////A4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAH+AAf////AcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH+AAP////gMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH+AAH////wOAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH8AAD////wHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH8AAA////4DgAAAAAAAAAAAAAAAAAAAAAAAAAAAAH8AAA////4DgAAAAAAAAAAAAAAAAAAAAAAAAAAAAD8AAAf///8BwAAAAAAAAAAAAAAAAAAAAAAAAAAAAD8AAAP///8A4AAAAAAAAAAAAAAAAAAAAAAAAAAAAD8AAAH///+A8AAAAAAAAAAAAAAAAAAAAAAAAAAAAD8AAAD////AcAAAAAAAAAAAAAAAAAAAAAAAAAAAAD8AAAB////AOAAAAAAAAAAAAAAAAAAAAAAAAAAAAD8AAAA////gHAAAAAAAAAAAAAAAAAAAAAAAAAAAAD8AAAA////gDgAAAAAAAAAAAAAAAAAAAAAAAAAAAD8AAAAf///wDwAAAAAAAAAAAAAAAAAAAAAAAAAAAD8AAAAP///wB4AAAAAAAAAAAAAAAAAAAAAAAAAAAD8AAAAP///4A4AAAAAAAAAAAAAAAAAAAAAAAAAAAD8AAAAH///4AcAAAAAAAAAAAAAAAAAAAAAAAAAAAD8AAAAD///8AOAAAAAAAAAAAAAAAAAAAAAAAAAAAD8AAAAD///8AHAAAAAAAAAAAAAAAAAAAAAAAAAAAD8AAAAB///+ADgAAAAAAAAAAAAAAAAAAAAAAAAAAD8AAAAA////ABwAAAAAAAAAAAAAAAAAAAAAAAAAAD8AAAAA////AA8AAAAAAAAAAAAAAAAAAAAAAAAAAD8AAAAAf///gAeAAAAAAAAAAAAAAAAAAAAAAAAAAD8AAAAAP///wAPAAAAAAAAAAAAAAAAAAAAAAAAAAD8AAAAAP///wAHgAAAAAAAAAAAAAAAAAAAAAAAAAD8AAAAAH///4AB4AAAAAAAAAAAAAAAAAAAAAAAAAD8AAAAAD///8AA+AAAAAAAAAAAAAAAAAAAAAAAAAD8AAAAAD///+AAPAAAAAAAAAAAAAAAAAAAAAAAAAB+AAAAAB////AAH4AAAAAAAAAAAAAAAAAAAAAAAAB+AAAAAA////gAB+AAAAAAAAAAAAAAAAAAAAAAAAB+AAAAAA////wAAf4AAAAAAAAAAAAAAAAAAAAAAAB+AAAAAAf///8AAH/+AAAAAAAAAAAAAAAAAAAAAAB+AAAAAAP////AAAf/wAAAAAAAAAAAAAAAAAAAAAB+AAAAAAP////8AD//+AAAAAAAAAAAAAAAAAAAAAB+AAAAAAH//////////wAAAAAAAAAAAAAAAAAAAAB+AAAAAAD//////////+AAAAAAAAAAAAAAAAAAAAB+AAAAAAD///////////wAAAAAAAAAAAAAAAAAAAB+AAAAAAB///////////8AAAAAAAAAAAAAAAAAAAB+AAAAAAA////////////gAAAAAAAAAAAAAAAAAAB+AAAAAAA////////////4AAAAAAAAAAAAAAAAAAB+AAAAAAAf///////////+AAAAAAAAAAAAAAAAAAB+AAAAAAAP////////////gAAAAAAAAAAAAAAAAAB+AAAAAAAP////////////4AAAAAAAAAAAAAAAAAB+AAAAAAAH////////////+AAAAAAAAAAAAAAAAAB/AAAAAAAH/////////////gAAAAAAAAAAAAAAAAB/AAAAAAAD/////////////wAAAAAAAAAAAAAAAAB/AAAAAAAB/////////////4AAAAAAAAAAAAAAAAB/AAAAAAAA/////////////8AAAAAAAAAAAAAAAAB/AAAAAAAAf////////////+AAAAAAAAAAAAAAAAA/AAAAAAAAP/////////////AAAAAAAAAAAAAAAAA/AAAAAAAAP/////////////gAAAAAAAAAAAAAAAA/AAAAAAAAH/////////////gAAAAAAAAAAAAAAAA/AAAAAAAAD/////////////AAAAAAAAAAAAAAAAA/AAAAAAAAB/////////////AAAAAAAAAAAAAAAAA/AAAAAAAAA////////////8AAAAAAAAAAAAAAAAA/AAAAAAAAAf///////////wAAAAAAAAAAAAAAAAA/AAAAAAAAAH///////////AAAAAAAAAAAAAAAAAA/AAAAAAAAAD//////////wAAAAAAAAAAAAAAAAAA/AAAAAAAAAB/////////8AAAAAAAAAAAAAAAAAAA/AAAAAAAAAAf///////8AAAAAAAAAAAAAAAAAAAA/AAAAAAAAAAH//////8AAAAAAAAAAAAAAAAAAAAA/AAAAAAAAAAA////+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAAYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+
+function logoESCPOS(){
+  // Decodificar el base64 a la cadena de bytes que espera la impresora
+  try{
+    var bin = atob(LOGO_ESCPOS_B64);
+    return String.fromCharCode(27,97,1) + bin + String.fromCharCode(10);  // centrado + imagen + salto
+  }catch(e){ return ''; }
 }
 
 // --- Constructor de comandos ---
@@ -3761,6 +3797,8 @@ function ticketESCPOS(ticketId){
   var p = new ESCPOS();
   p.init().centrar();
 
+  if(s.escposLogo === true){ p.b += logoESCPOS(); }
+
   if(ver('ticket_nombre') && s.nombreTienda){ p.negrita(true).altoDoble(true).linea(s.nombreTienda.toUpperCase()).altoDoble(false).negrita(false); }
   if(ver('ticket_direccion') && s.direccion) p.linea(s.direccion);
   if(ver('ticket_telefono')  && s.telefono)  p.linea('Tel. ' + s.telefono);
@@ -3774,21 +3812,21 @@ function ticketESCPOS(ticketId){
   p.fila('Fecha', new Date(t.fecha).toLocaleString('es-ES'));
   p.separador('=');
 
-  var ahorroTotal = 0;
   lineas.forEach(function(ln){
     p.negrita(true).linea((ln.marca||'') + ' ' + (ln.modelo||'')).negrita(false);
     p.fila('  Talla ' + ln.talla + ' x' + ln.cantidad, eur(ln.total||0));
 
     if(ln.promoTipo && ver('ticket_promos')){
-      // Precio original tachado no existe en ESC/POS: se indica en texto
-      var origUnit  = precioConIVA(ln.precioOriginalUnit || 0);
-      var promoUnit = precioConIVA(ln.precioTrasPromoUnit || 0);
-      var ahorroLinea = Math.max(0, (origUnit - promoUnit) * (ln.cantidad || 1));
-      ahorroTotal += ahorroLinea;
-
-      p.linea('  Antes ' + eur(origUnit) + '/ud  ->  ahora ' + eur(promoUnit) + '/ud');
-      p.linea('  Promo ' + (ln.promoTipo==='porcentaje' ? '-'+ln.promoValor+'%' : '-'+eur(ln.promoValor))
-              + '   Ahorro ' + eur(ahorroLinea));
+      // Mismo formato que la previsualización en pantalla.
+      // ESC/POS no tiene comando de tachado, así que el PVP original va
+      // subrayado, que es lo más parecido que admiten estas impresoras.
+      var origUnit = precioConIVA(ln.precioOriginalUnit || 0);
+      p.texto('  PVP orig. ')
+       .raw(27,45,1)               // ESC - 1 : subrayado
+       .texto(eur(origUnit))
+       .raw(27,45,0)               // ESC - 0 : fin del subrayado
+       .texto('/ud - Promo ' + (ln.promoTipo==='porcentaje' ? '-'+ln.promoValor+'%' : '-'+eur(ln.promoValor)))
+       .raw(10);
     }
 
     if(ln.descManualActivo && ver('ticket_descuentos')){
@@ -3804,9 +3842,6 @@ function ticketESCPOS(ticketId){
     p.fila('IVA (' + (s.ivaRate||21) + '%)', eur(t.iva||0));
   }
   p.negrita(true).doble(true).fila('TOTAL', eur(t.total||0)).doble(false).negrita(false);
-  if(ahorroTotal > 0 && ver('ticket_promos')){
-    p.separador('-').centrar().negrita(true).linea('HA AHORRADO ' + eur(ahorroTotal)).negrita(false).izquierda();
-  }
   if(ver('ticket_formaPago')) p.fila('Forma de pago', metodoPagoLabel(t.metodoPago));
 
   var pie = (s.ticket_pie !== undefined ? s.ticket_pie : '¡Gracias por su compra!').trim();
@@ -3825,17 +3860,20 @@ function imprimirTicketESCPOS(ticketId){
   if(enviarARawBT(datos, 'Ticket')) showToast('Ticket enviado por ' + _ultimoEnvioRawBT.via + ' (' + _ultimoEnvioRawBT.bytes + ' bytes)', 'ok');
 }
 
-// Abrir el cajón sin imprimir nada
+// Abrir el cajón sin imprimir nada.
+// Se envía ÚNICAMENTE el pulso, sin reiniciar la impresora ni añadir saltos
+// de línea: cualquier byte de más hace que salga papel innecesariamente.
 function abrirCajonESCPOS(){
-  var p = new ESCPOS();
-  p.init().cajon();
-  if(enviarARawBT(p.bytes(), 'Cajón')) showToast('Abriendo el cajón...', 'ok');
+  var datos = String.fromCharCode(27,112,0,25,250);   // ESC p 0 25 250
+  if(enviarARawBT(datos, 'Cajón')) showToast('Abriendo el cajón...', 'ok');
 }
 
 // Ticket de prueba: sirve para elegir la página de códigos correcta
 function pruebaESCPOS(){
   var p = new ESCPOS();
-  p.init().centrar().negrita(true).altoDoble(true).linea('PRUEBA DE IMPRESION').altoDoble(false).negrita(false);
+  p.init().centrar();
+  if(state.settings.escposLogo === true){ p.b += logoESCPOS(); }
+  p.negrita(true).altoDoble(true).linea('PRUEBA DE IMPRESION').altoDoble(false).negrita(false);
   p.linea('Mil Pasos v' + APP_VERSION).izquierda().separador('=');
   p.linea('Acentos: aeiou AEIOU');
   p.linea('Enes: nano NINO');
@@ -3845,6 +3883,30 @@ function pruebaESCPOS(){
   p.separador('-');
   p.linea('Columnas configuradas: ' + p.ancho);
   p.linea('1234567890'.repeat(Math.ceil(p.ancho/10)).slice(0, p.ancho));
+  p.separador('-');
+  p.negrita(true).linea('SIMBOLO DEL EURO POR PAGINA').negrita(false);
+  p.linea('Marca la linea donde se vea el simbolo:');
+  // Cada página tiene el euro en una posición distinta. Se prueban todas.
+  var candidatos = [
+    {pag:19, pos:213, nombre:'CP858'},
+    {pag:16, pos:128, nombre:'CP1252'},
+    {pag:17, pos:213, nombre:'CP866'},
+    {pag:2,  pos:213, nombre:'CP850'},
+    {pag:0,  pos:213, nombre:'CP437'},
+    {pag:15, pos:164, nombre:'ISO8859-1'},
+    {pag:32, pos:213, nombre:'ISO8859-15'}
+  ];
+  candidatos.forEach(function(c){
+    p.raw(27,116,c.pag);                       // seleccionar la página
+    p.texto('  ' + c.nombre + ' (pag ' + c.pag + '): [');
+    p.raw(c.pos);                              // el byte candidato
+    p.texto(']').raw(10);
+  });
+  // Volver a la página configurada
+  var pOrig = state.settings.escposPagina;
+  if(pOrig === undefined) pOrig = 19;
+  if(pOrig >= 0) p.raw(27,116,pOrig);
+
   p.separador('-');
   p.negrita(true).fila('TOTAL DE PRUEBA', eur(123.45)).negrita(false);
   p.avanzar(state.settings.escposMargenPie || 6);
