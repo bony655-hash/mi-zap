@@ -415,7 +415,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "10.6";
+const APP_VERSION = "10.7";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -2703,8 +2703,17 @@ function renderImpresoraTermica(){
           +   '<input type="checkbox" ' + (s.escposCajon === true ? 'checked' : '') + ' '
           +   'onchange="state.settings.escposCajon=this.checked; saveState();"> Abrir el cajón en los cobros en efectivo</label>'
 
+          + '<div class="field"><label>Byte del € encontrado en el mapa (opcional)</label>'
+          + '<div style="display:flex;gap:6px;align-items:center;">'
+          +   '<input type="number" min="0" max="255" placeholder="ej. 213" value="'+(s.escposEuroByte!==undefined&&s.escposEuroByte!==null?s.escposEuroByte:'')+'" '
+          +   'style="width:90px" onchange="state.settings.escposEuroByte=this.value?parseInt(this.value):null; saveState();">'
+          +   '<span style="font-size:12px;color:var(--ink-dim);">Imprime el \'Mapa de caracteres\', busca el € y pon aquí su número</span>'
+          + '</div></div>'
+
           + '<div class="ticket-actions">'
           +   '<button class="btn accent" onclick="pruebaESCPOS()">🧾 Ticket de prueba</button>'
+          +   '<button class="btn secondary" onclick="mapaCaracteres()">🔤 Mapa de caracteres</button>'
+          +   '<button class="btn secondary" onclick="pruebaLogo()">🖼️ Probar logotipo</button>'
           +   '<button class="btn secondary" onclick="abrirCajonESCPOS()">💰 Abrir cajón</button>'
           + '</div>'
           + '<div class="note" style="font-size:12px;margin:10px 0 0;">'
@@ -3572,6 +3581,13 @@ var PAGINAS_CODIGOS = [
 
 // Posición del € en la página elegida, o null si esa página no lo tiene
 function posicionEuro(){
+  // Si se ha encontrado el byte real con el mapa de caracteres, se usa ese
+  // directamente y no depende de qué página seleccione ESC t (que muchas
+  // impresoras baratas ignoran).
+  if(state.settings.escposEuroByte !== undefined && state.settings.escposEuroByte !== null && state.settings.escposEuroByte !== ''){
+    var n = parseInt(state.settings.escposEuroByte, 10);
+    if(!isNaN(n) && n >= 0 && n <= 255) return n;
+  }
   var p = state.settings.escposPagina;
   if(p === undefined) p = 19;
   var f = PAGINAS_CODIGOS.find(function(x){ return x.id === p; });
@@ -3869,6 +3885,92 @@ function abrirCajonESCPOS(){
 }
 
 // Ticket de prueba: sirve para elegir la página de códigos correcta
+// ============ DIAGNÓSTICO DE LA IMPRESORA ============
+// Muchas térmicas baratas ignoran ESC t (selección de página de códigos) y
+// usan la suya fija. Entonces no hay forma de acertar el byte del euro
+// probando páginas: hay que ver el mapa real que imprime el aparato.
+
+function mapaCaracteres(){
+  var p = new ESCPOS();
+  p.raw(27,64);   // reiniciar, sin tocar la página: queremos ver la de fábrica
+  p.centrar().negrita(true).linea('MAPA DE CARACTERES').negrita(false);
+  p.linea('Busca el simbolo del euro').izquierda();
+  p.separador('=');
+
+  // Bytes 128 a 255, ocho por fila, con su número delante
+  for(var base=128; base<256; base+=8){
+    var etiqueta = '';
+    for(var k=0;k<8;k++){
+      etiqueta += String(base+k).padStart(3,' ') + ' ';
+    }
+    p.texto(etiqueta).raw(10);
+    p.texto('  ');
+    for(var k2=0;k2<8;k2++){
+      p.raw(base+k2).texto('   ');
+    }
+    p.raw(10);
+  }
+  p.separador('=');
+  p.linea('Anota el numero bajo el simbolo EUR');
+  p.avanzar(state.settings.escposMargenPie || 6);
+  if(state.settings.escposCortar !== false) p.cortar();
+
+  if(enviarARawBT(p.bytes(), 'Mapa')){
+    showToast('Mapa enviado. Busca el € y anota su número.', 'ok', true);
+  }
+}
+
+// Prueba de imagen: dos comandos distintos, por si la impresora solo
+// entiende el antiguo
+function pruebaLogo(){
+  var p = new ESCPOS();
+  p.init().centrar();
+  p.negrita(true).linea('PRUEBA 1: comando GS v 0').negrita(false);
+  p.b += logoESCPOS();
+  p.raw(10);
+  p.negrita(true).linea('PRUEBA 2: comando ESC *').negrita(false);
+  p.b += logoESCPOSAntiguo();
+  p.raw(10);
+  p.izquierda().separador('-');
+  p.linea('Si solo sale una, usaremos esa.');
+  p.linea('Si no sale ninguna, la impresora no');
+  p.linea('admite imagenes por esta via.');
+  p.avanzar(state.settings.escposMargenPie || 6);
+  if(state.settings.escposCortar !== false) p.cortar();
+  if(enviarARawBT(p.bytes(), 'Logo')) showToast('Prueba de logotipo enviada', 'ok', true);
+}
+
+// El mismo logotipo con ESC * (modo bit image), que admiten las más antiguas
+function logoESCPOSAntiguo(){
+  try{
+    var bin = atob(LOGO_ESCPOS_B64);
+    // Saltar la cabecera GS v 0 (8 bytes) para quedarnos con los datos
+    var anchoBytes = bin.charCodeAt(4) + bin.charCodeAt(5)*256;
+    var alto = bin.charCodeAt(6) + bin.charCodeAt(7)*256;
+    var datos = bin.slice(8);
+    var ancho = anchoBytes * 8;
+    var salida = String.fromCharCode(27,97,1);   // centrado
+
+    // ESC * imprime en franjas de 8 puntos de alto
+    for(var franja=0; franja*8 < alto; franja++){
+      salida += String.fromCharCode(27,42,0, ancho & 0xFF, (ancho>>8) & 0xFF);
+      for(var x=0; x<ancho; x++){
+        var col = 0;
+        for(var bit=0; bit<8; bit++){
+          var y = franja*8 + bit;
+          if(y >= alto) continue;
+          var idx = y*anchoBytes + (x >> 3);
+          var b = datos.charCodeAt(idx) || 0;
+          if(b & (0x80 >> (x & 7))) col |= (0x80 >> bit);
+        }
+        salida += String.fromCharCode(col);
+      }
+      salida += String.fromCharCode(10);
+    }
+    return salida;
+  }catch(e){ return ''; }
+}
+
 function pruebaESCPOS(){
   var p = new ESCPOS();
   p.init().centrar();
