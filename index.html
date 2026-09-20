@@ -415,7 +415,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "11.1";
+const APP_VERSION = "11.2";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -1413,6 +1413,14 @@ function matchesHistoryPeriod(fechaIso){
 
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function eur(n){ return (Math.round((n+Number.EPSILON)*100)/100).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+" €"; }
+// Igual, pero sin el símbolo de la moneda. Repetir " EUR" en cada línea del
+// ticket (talla, base imponible, IVA...) suma 4 caracteres por línea que
+// muchas impresoras no tienen margen para imprimir sin desbordar, aunque el
+// ajuste "columnas" del panel diga lo contrario: ese ajuste solo cambia cómo
+// rellenamos el texto aquí, no le dice nada a la impresora sobre su fuente
+// real. Sin repetir la divisa en cada línea, el problema desaparece sin
+// tener que adivinar el ancho físico exacto de cada impresora.
+function eurSinDivisa(n){ return (Math.round((n+Number.EPSILON)*100)/100).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function pct(n){ return (Math.round(n*10)/10)+" %"; }
 function tallasRange(){ const a=[]; for(let t=state.settings.tallaMin;t<=state.settings.tallaMax;t++) a.push(t); return a; }
 const TALLAS_ROPA_BEBE = ['0-3M','3-6M','6-9M','9-12M','12-18M','18-24M','2A','3A','4A'];
@@ -3894,11 +3902,12 @@ function ticketESCPOS(ticketId){
   p.izquierda().separador('=');
   if(ver('ticket_numero')) p.fila('Ticket', t.numSerieFactura || '');
   p.fila('Fecha', new Date(t.fecha).toLocaleString('es-ES'));
+  p.linea('(Importes en euros)');
   p.separador('=');
 
   lineas.forEach(function(ln){
     p.negrita(true).linea((ln.marca||'') + ' ' + (ln.modelo||'')).negrita(false);
-    p.fila('  Talla ' + ln.talla + ' x' + ln.cantidad, eur(ln.total||0));
+    p.fila('  Talla ' + ln.talla + ' x' + ln.cantidad, eurSinDivisa(ln.total||0));
 
     if(ln.promoTipo && ver('ticket_promos')){
       // Mismo formato que la previsualización en pantalla.
@@ -3907,23 +3916,23 @@ function ticketESCPOS(ticketId){
       var origUnit = precioConIVA(ln.precioOriginalUnit || 0);
       p.texto('  PVP orig. ')
        .raw(27,45,1)               // ESC - 1 : subrayado
-       .texto(eur(origUnit))
+       .texto(eurSinDivisa(origUnit))
        .raw(27,45,0)               // ESC - 0 : fin del subrayado
-       .texto('/ud - Promo ' + (ln.promoTipo==='porcentaje' ? '-'+ln.promoValor+'%' : '-'+eur(ln.promoValor)))
+       .texto('/ud - Promo ' + (ln.promoTipo==='porcentaje' ? '-'+ln.promoValor+'%' : '-'+eurSinDivisa(ln.promoValor)))
        .raw(10);
     }
 
     if(ln.descManualActivo && ver('ticket_descuentos')){
-      p.linea('  Dto. ' + (ln.descManualTipo==='porcentaje' ? '-'+ln.descManualValor+'%' : '-'+eur(ln.descManualValor))
-              + '   -' + eur(ln.descManualImporte || 0));
+      p.linea('  Dto. ' + (ln.descManualTipo==='porcentaje' ? '-'+ln.descManualValor+'%' : '-'+eurSinDivisa(ln.descManualValor))
+              + '   -' + eurSinDivisa(ln.descManualImporte || 0));
     }
   });
 
   p.separador('-');
-  if(t.descuento && ver('ticket_descuentos')) p.fila('Descuento', '-' + eur(t.descuento.importe||0));
+  if(t.descuento && ver('ticket_descuentos')) p.fila('Descuento', '-' + eurSinDivisa(t.descuento.importe||0));
   if(ver('ticket_desgloseIva')){
-    p.fila('Base imponible', eur(t.subtotal||0));
-    p.fila('IVA (' + (s.ivaRate||21) + '%)', eur(t.iva||0));
+    p.fila('Base imponible', eurSinDivisa(t.subtotal||0));
+    p.fila('IVA (' + (s.ivaRate||21) + '%)', eurSinDivisa(t.iva||0));
   }
   // El TOTAL en tamaño doble va en su propia línea: si se combina con la
   // etiqueta "TOTAL" y el relleno de espacios de fila(), el texto entero se
