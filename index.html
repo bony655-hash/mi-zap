@@ -415,7 +415,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "11.12";
+const APP_VERSION = "11.13";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -2285,8 +2285,7 @@ function renderVentas(){
       <div class="scan-label">Escanea el código de barras de cada par para añadirlo a la venta</div>
       <div class="scan-row">
         <span class="scan-cursor">▌</span>
-        <input id="scan-ventas" class="scan-input" type="text" placeholder="Esperando código de barras..." autocomplete="off"
-          onkeydown="if(event.key==='Enter'){handleScanVenta(this.value); this.value='';}">
+        <input id="scan-ventas" class="scan-input" type="text" placeholder="Esperando código de barras..." autocomplete="off">
       </div>
     </div>
     ${state.products.length===0 ? `<div class="note" style="margin-top:8px;">Todavía no tienes productos en el almacén. Añade alguno en la pestaña "Almacén" antes de vender.</div>` : `
@@ -6552,6 +6551,51 @@ document.addEventListener('focusout', function(e){
     el.value = '0';
   }
 });
+
+// ---- LECTOR DE CÓDIGOS GLOBAL EN VENTAS ----
+// Antes había que tocar el cuadro "Esperando código de barras" antes de
+// escanear. Un lector de código de barras es, para el sistema, un teclado:
+// "teclea" el código y termina con Intro. La diferencia con una persona
+// tecleando es la velocidad — un lector encadena los caracteres en unos
+// pocos milisegundos, mucho más rápido de lo que nadie escribe a mano —,
+// así que en vez de exigir el foco en un campo concreto, se detecta el
+// escaneo por esa velocidad, esté el foco donde esté.
+(function(){
+  var buffer = '';
+  var ultimaTecla = 0;
+  var UMBRAL_MS = 60;     // más separado que esto, no es un lector
+  var MIN_LARGO = 5;      // ningún código de barras real es más corto
+
+  document.addEventListener('keydown', function(e){
+    if(currentTab !== 'ventas') { buffer = ''; return; }
+
+    // Si el foco está en otro campo de texto que no sea el propio cuadro
+    // de escaneo, se respeta lo que el usuario esté tecleando a mano ahí
+    // (el nombre de un artículo manual, una cantidad...) y no se procesa
+    // como código de barras.
+    var activo = document.activeElement;
+    var esOtroCampo = activo && (activo.tagName === 'INPUT' || activo.tagName === 'TEXTAREA' || activo.tagName === 'SELECT')
+      && activo.id !== 'scan-ventas';
+    if(esOtroCampo){ buffer = ''; return; }
+
+    var ahora = Date.now();
+    if(ahora - ultimaTecla > UMBRAL_MS) buffer = '';   // demasiado lento: empieza de cero
+    ultimaTecla = ahora;
+
+    if(e.key === 'Enter'){
+      if(buffer.length >= MIN_LARGO){
+        handleScanVenta(buffer);
+        var campo = document.getElementById('scan-ventas');
+        if(campo) campo.value = '';
+      }
+      buffer = '';
+      return;
+    }
+    // Solo un carácter imprimible por pulsación (letras, números...);
+    // se ignoran teclas de control (Shift, Tab, flechas...)
+    if(e.key.length === 1) buffer += e.key;
+  });
+})();
 
 iniciarFirebase();
 loadState().then(function(){
