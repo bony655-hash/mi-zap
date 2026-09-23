@@ -415,7 +415,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "11.13";
+const APP_VERSION = "11.14";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -2021,7 +2021,14 @@ function buscarEnHistorialVentas(valor){
 
 function calcularHistorialVentas(){
   const term = historyFilter.trim().toLowerCase();
-    const preFiltered = state.sales.filter(s=> (!term || (s.marca+" "+s.modelo).toLowerCase().includes(term)) && matchesHistoryPeriod(s.fecha));
+  // Mapa rápido ticketId -> número de factura, para poder buscar también
+  // por número de ticket (p. ej. "26S/0016" o solo "16"), no solo por
+  // marca y modelo.
+  const numPorTicket = {};
+  state.tickets.forEach(function(t){ numPorTicket[t.id] = (t.numSerieFactura||'').toLowerCase(); });
+  const preFiltered = state.sales.filter(s=>
+    (!term || (s.marca+" "+s.modelo).toLowerCase().includes(term) || (numPorTicket[s.ticketId]||'').includes(term))
+    && matchesHistoryPeriod(s.fecha));
   
     // Ordenar por el criterio elegido, agrupando siempre las líneas del mismo ticket
     // Para mantener la agrupación por ticket, ordenamos tickets y luego reconstruimos las líneas
@@ -2374,7 +2381,7 @@ function renderVentas(){
 
     <h2 class="section-title" style="margin-top:20px;">Historial de ventas</h2>
     <div class="toolbar">
-      <input id="ventas-history-search" type="text" placeholder="Filtrar por marca o modelo..." value="${escapeAttr(historyFilter)}" oninput="buscarEnHistorialVentas(this.value)" style="min-width:200px;">
+      <input id="ventas-history-search" type="text" placeholder="Filtrar por marca, modelo o nº de ticket..." value="${escapeAttr(historyFilter)}" oninput="buscarEnHistorialVentas(this.value)" style="min-width:230px;">
       <label style="margin:0;">Ver un día <input type="date" value="${historyFecha||''}" onchange="historyFecha=this.value; historyPeriod = this.value? 'dia_especifico' : 'todos'; render()" style="margin-left:4px;"></label>
       <select onchange="historyFecha=null; historyPeriod=this.value; render();" style="min-width:170px;">
         <option value="todos" ${historyPeriod==='todos'?'selected':''}>Todo el historial</option>
