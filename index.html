@@ -415,7 +415,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "11.9";
+const APP_VERSION = "11.12";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -1989,6 +1989,155 @@ function ampliarFoto(productId){
     + '</div></div>';
 }
 
+// Cálculo del historial de ventas: filtrado, orden, agrupación por ticket y
+// construcción de las filas. Separado de renderVentas() para poder llamarlo
+// al escribir en el buscador sin repintar la pestaña entera (eso destruye
+// y recrea el propio campo de texto, y en pantalla táctil el teclado
+// parpadea en cada letra).
+// Al escribir en el buscador del historial NO se repinta la pestaña
+// entera: se sustituyen solo el resumen y las filas de la tabla. Igual que
+// en el buscador de Almacén, repintarlo todo destruye y recrea el propio
+// campo de texto, y en pantalla táctil eso hace que el teclado parpadee en
+// cada letra.
+var _temporizadorBusquedaHistorial = null;
+function buscarEnHistorialVentas(valor){
+  historyFilter = valor;
+  clearTimeout(_temporizadorBusquedaHistorial);
+  _temporizadorBusquedaHistorial = setTimeout(function(){
+    var resumen = document.getElementById('historial-resumen');
+    var tbody = document.getElementById('historial-tbody');
+    var pie = document.getElementById('historial-pie');
+    if(!resumen || !tbody || !pie){ render(); return; }   // la pestaña ya no está: repintar entero
+    var c = calcularHistorialVentas();
+    resumen.innerHTML = '<span>Ventas en el filtro: <b>'+c.filtered.length+'</b></span>'
+      + '<span>Total: <b>'+eur(c.filteredTotal)+'</b></span>'
+      + '<span>Beneficio: <b>'+eur(c.filteredBeneficio)+'</b></span>';
+    tbody.innerHTML = c.rowsHist;
+    var nTickets = new Set(c.filtered.map(function(s){ return s.ticketId; })).size;
+    pie.innerHTML = c.filtered.length+' línea(s) · '+nTickets+' ticket(s)'
+      + (c.filtered.length>200 ? ' · <span style="color:var(--coral);">mostrando las 200 más recientes — afina la búsqueda para ver el resto</span>' : '');
+  }, 120);
+}
+
+function calcularHistorialVentas(){
+  const term = historyFilter.trim().toLowerCase();
+    const preFiltered = state.sales.filter(s=> (!term || (s.marca+" "+s.modelo).toLowerCase().includes(term)) && matchesHistoryPeriod(s.fecha));
+  
+    // Ordenar por el criterio elegido, agrupando siempre las líneas del mismo ticket
+    // Para mantener la agrupación por ticket, ordenamos tickets y luego reconstruimos las líneas
+    const ticketIds = [...new Set(preFiltered.map(s=>s.ticketId))];
+    const ticketMap = {};
+    ticketIds.forEach(tid=>{
+      const lineas = preFiltered.filter(s=>s.ticketId===tid);
+      const t = state.tickets.find(x=>x.id===tid);
+      ticketMap[tid] = { lineas, ticket:t,
+        fecha: lineas[0]?.fecha || '',
+        numero: t?.numero || 0,
+        total: lineas.reduce((a,s)=>a+s.total,0),
+        beneficio: lineas.reduce((a,s)=>a+s.beneficio,0),
+        marca: lineas[0]?.marca || '',
+        modelo: lineas[0]?.modelo || ''
+      };
+    });
+  
+    const ordenarTickets = (a,b) => {
+      const ta=ticketMap[a], tb=ticketMap[b];
+      switch(historyOrden){
+        case 'fecha_asc':      return ta.fecha.localeCompare(tb.fecha);
+        case 'fecha_desc':     return tb.fecha.localeCompare(ta.fecha);
+        case 'ticket_asc':     return ta.numero - tb.numero;
+        case 'ticket_desc':    return tb.numero - ta.numero;
+        case 'total_asc':      return ta.total - tb.total;
+        case 'total_desc':     return tb.total - ta.total;
+        case 'beneficio_asc':  return beneficioRealSale(ta) - beneficioRealSale(tb);
+        case 'beneficio_desc': return beneficioRealSale(tb) - beneficioRealSale(ta);
+        case 'marca_asc':      return ta.marca.localeCompare(tb.marca, 'es');
+        case 'marca_desc':     return tb.marca.localeCompare(ta.marca, 'es');
+        case 'modelo_asc':     return ta.modelo.localeCompare(tb.modelo, 'es');
+        case 'modelo_desc':    return tb.modelo.localeCompare(ta.modelo, 'es');
+        default:               return tb.fecha.localeCompare(ta.fecha);
+      }
+    };
+    ticketIds.sort(ordenarTickets);
+  
+    const filtered = ticketIds.flatMap(tid => ticketMap[tid].lineas);
+    const filteredTotal = filtered.reduce((a,s)=>a+s.total,0);
+    const filteredBeneficio = filtered.reduce((a,s)=>a+beneficioRealSale(s),0);
+    let prevTicketId = null;
+    let prevDia = null;
+    const rowsHistArr = [];
+    const visibles = filtered.slice(0,200);
+  
+    // Total cobrado por día, para mostrarlo en la cabecera de cada jornada
+    const totalPorDia = {};
+    visibles.forEach(s=>{
+      const d = String(s.fecha||'').slice(0,10);
+      totalPorDia[d] = (totalPorDia[d]||0) + (s.total||0);
+    });
+  
+    // Posición de cada ticket dentro de su día (1º, 2º, 3º...). Se calcula de
+    // una vez, en el orden en que se van a pintar. El 1º blanco, el 2º
+    // sombreado, el 3º blanco... sin depender de ningún contador que se alterne.
+    const claseTicket = {};
+    const contadorDia = {};
+    const yaVisto = {};
+    visibles.forEach(s=>{
+      if(yaVisto[s.ticketId]) return;
+      yaVisto[s.ticketId] = true;
+      const d = String(s.fecha||'').slice(0,10);
+      contadorDia[d] = (contadorDia[d]||0) + 1;
+      claseTicket[s.ticketId] = (contadorDia[d] % 2 === 1) ? 'ticket-row-a' : 'ticket-row-b';
+    });
+  
+    visibles.forEach(s=>{
+      const diaActual = String(s.fecha||'').slice(0,10);
+      if(diaActual !== prevDia){
+        // Cambio de jornada: banda separadora con la fecha y el total del día
+        const fLarga = new Date(s.fecha).toLocaleDateString('es-ES',{weekday:'long', day:'numeric', month:'long', year:'numeric'});
+        rowsHistArr.push(`<tr class="dia-sep"><td colspan="11">${escapeHtml(fLarga)}<span class="dia-total">${eur(totalPorDia[diaActual]||0)}</span></td></tr>`);
+        prevDia = diaActual;
+        prevTicketId = null;
+      } else if(prevTicketId!==null && s.ticketId!==prevTicketId){
+        rowsHistArr.push(`<tr class="ticket-spacer"><td colspan="11"></td></tr>`);
+      }
+      prevTicketId = s.ticketId;
+      const estadoDev = estadoDevolucion(s);
+      const badgeDev = estadoDev==='total' ? `<span class="dev-badge dev-total">Devuelta</span>`
+                    : estadoDev==='parcial' ? `<span class="dev-badge dev-parcial" title="Quedan ${maxDevolvible(s)} par(es) sin devolver">Parcial</span>`
+                    : "";
+      const puedeDevolver = maxDevolvible(s)>0;
+      const ticket = state.tickets.find(t=>t.id===s.ticketId);
+      const estadoPago = ticket ? (ticket.estadoPago||'completada') : 'completada';
+      const badgePago = estadoPago==='pendiente'
+        ? `<button class="estado-pendiente" onclick="openPendienteModal('${ticket.id}')" title="${ticket.datosCliente&&ticket.datosCliente.nombre ? '👤 '+ticket.datosCliente.nombre : 'Sin datos de cliente'}">⏳ Pendiente${ticket.datosCliente&&ticket.datosCliente.nombre?' — '+escapeHtml(ticket.datosCliente.nombre):''}</button>`
+        : `<span class="estado-completada">✅ Completada</span>`;
+      rowsHistArr.push(`
+      <tr class="${claseTicket[s.ticketId] || 'ticket-row-a'}" data-ticketid="${s.ticketId}">
+        <td>${ticket? ticket.numSerieFactura : "—"}</td>
+        <td>${new Date(s.fecha).toLocaleString('es-ES')}</td>
+        <td>${escapeHtml(s.marca)}</td>
+        <td>${escapeHtml(s.modelo)}</td>
+        <td class="num">${s.talla}</td>
+        <td class="num">${s.cantidad}</td>
+        <td class="num">${eur(s.total)}</td>
+        <td class="num">${eur(beneficioRealSale(s))}</td>
+        <td>${badgePago}</td>
+        <td>${badgeDev}</td>
+        <td style="white-space:nowrap;min-width:110px;">
+          <div style="display:flex;gap:4px;align-items:center;">
+            ${estadoPago==='completada' && ticket ? `<button class="btn small" style="background:var(--gold);border-color:var(--gold);color:#3a2c00;" onclick="openPendienteModal('${ticket.id}')" title="Marcar como pendiente">⏳</button>` : ""}
+            ${estadoPago==='pendiente' && ticket ? `<button class="btn small" style="background:var(--gold);border-color:var(--gold);color:#3a2c00;" onclick="openPendienteModal('${ticket.id}')" title="Ver / editar pendiente">⏳</button>` : ""}
+            ${ticket ? `<button class="btn small secondary" onclick="abrirTicketImprimible('${ticket.id}')" title="Ver / reimprimir ticket">🖨️</button>` : ""}
+            ${puedeDevolver? `<button class="btn small secondary" onclick="openDevolucionModal('${s.id}')" title="Registrar devolución">↩️</button>` : ""}
+            ${ticket ? `<button class="btn small danger" onclick="eliminarTicket('${ticket.id}')" title="Eliminar ticket">🗑️</button>` : ""}
+          </div>
+        </td>
+      </tr>`);
+    });
+    const rowsHist = rowsHistArr.join("") || `<tr><td colspan="11" style="text-align:center;color:var(--ink-dim);">No hay ventas para este filtro.</td></tr>`;
+    return {filtered, filteredTotal, filteredBeneficio, rowsHist};
+}
+
 function renderVentas(){
   const totals = cartTotals();
   const rowsCart = cart.map((line,i)=>{
@@ -2117,121 +2266,11 @@ function renderVentas(){
     </div>
   ` : `<div class="cart-empty">El carrito está vacío. Escanea un producto para añadirlo.</div>`;
 
-  const term = historyFilter.trim().toLowerCase();
-  const preFiltered = state.sales.filter(s=> (!term || (s.marca+" "+s.modelo).toLowerCase().includes(term)) && matchesHistoryPeriod(s.fecha));
-
-  // Ordenar por el criterio elegido, agrupando siempre las líneas del mismo ticket
-  // Para mantener la agrupación por ticket, ordenamos tickets y luego reconstruimos las líneas
-  const ticketIds = [...new Set(preFiltered.map(s=>s.ticketId))];
-  const ticketMap = {};
-  ticketIds.forEach(tid=>{
-    const lineas = preFiltered.filter(s=>s.ticketId===tid);
-    const t = state.tickets.find(x=>x.id===tid);
-    ticketMap[tid] = { lineas, ticket:t,
-      fecha: lineas[0]?.fecha || '',
-      numero: t?.numero || 0,
-      total: lineas.reduce((a,s)=>a+s.total,0),
-      beneficio: lineas.reduce((a,s)=>a+s.beneficio,0),
-      marca: lineas[0]?.marca || '',
-      modelo: lineas[0]?.modelo || ''
-    };
-  });
-
-  const ordenarTickets = (a,b) => {
-    const ta=ticketMap[a], tb=ticketMap[b];
-    switch(historyOrden){
-      case 'fecha_asc':      return ta.fecha.localeCompare(tb.fecha);
-      case 'fecha_desc':     return tb.fecha.localeCompare(ta.fecha);
-      case 'ticket_asc':     return ta.numero - tb.numero;
-      case 'ticket_desc':    return tb.numero - ta.numero;
-      case 'total_asc':      return ta.total - tb.total;
-      case 'total_desc':     return tb.total - ta.total;
-      case 'beneficio_asc':  return beneficioRealSale(ta) - beneficioRealSale(tb);
-      case 'beneficio_desc': return beneficioRealSale(tb) - beneficioRealSale(ta);
-      case 'marca_asc':      return ta.marca.localeCompare(tb.marca, 'es');
-      case 'marca_desc':     return tb.marca.localeCompare(ta.marca, 'es');
-      case 'modelo_asc':     return ta.modelo.localeCompare(tb.modelo, 'es');
-      case 'modelo_desc':    return tb.modelo.localeCompare(ta.modelo, 'es');
-      default:               return tb.fecha.localeCompare(ta.fecha);
-    }
-  };
-  ticketIds.sort(ordenarTickets);
-
-  const filtered = ticketIds.flatMap(tid => ticketMap[tid].lineas);
-  const filteredTotal = filtered.reduce((a,s)=>a+s.total,0);
-  const filteredBeneficio = filtered.reduce((a,s)=>a+beneficioRealSale(s),0);
-  let prevTicketId = null;
-  let prevDia = null;
-  const rowsHistArr = [];
-  const visibles = filtered.slice(0,200);
-
-  // Total cobrado por día, para mostrarlo en la cabecera de cada jornada
-  const totalPorDia = {};
-  visibles.forEach(s=>{
-    const d = String(s.fecha||'').slice(0,10);
-    totalPorDia[d] = (totalPorDia[d]||0) + (s.total||0);
-  });
-
-  // Posición de cada ticket dentro de su día (1º, 2º, 3º...). Se calcula de
-  // una vez, en el orden en que se van a pintar. El 1º blanco, el 2º
-  // sombreado, el 3º blanco... sin depender de ningún contador que se alterne.
-  const claseTicket = {};
-  const contadorDia = {};
-  const yaVisto = {};
-  visibles.forEach(s=>{
-    if(yaVisto[s.ticketId]) return;
-    yaVisto[s.ticketId] = true;
-    const d = String(s.fecha||'').slice(0,10);
-    contadorDia[d] = (contadorDia[d]||0) + 1;
-    claseTicket[s.ticketId] = (contadorDia[d] % 2 === 1) ? 'ticket-row-a' : 'ticket-row-b';
-  });
-
-  visibles.forEach(s=>{
-    const diaActual = String(s.fecha||'').slice(0,10);
-    if(diaActual !== prevDia){
-      // Cambio de jornada: banda separadora con la fecha y el total del día
-      const fLarga = new Date(s.fecha).toLocaleDateString('es-ES',{weekday:'long', day:'numeric', month:'long', year:'numeric'});
-      rowsHistArr.push(`<tr class="dia-sep"><td colspan="11">${escapeHtml(fLarga)}<span class="dia-total">${eur(totalPorDia[diaActual]||0)}</span></td></tr>`);
-      prevDia = diaActual;
-      prevTicketId = null;
-    } else if(prevTicketId!==null && s.ticketId!==prevTicketId){
-      rowsHistArr.push(`<tr class="ticket-spacer"><td colspan="11"></td></tr>`);
-    }
-    prevTicketId = s.ticketId;
-    const estadoDev = estadoDevolucion(s);
-    const badgeDev = estadoDev==='total' ? `<span class="dev-badge dev-total">Devuelta</span>`
-                  : estadoDev==='parcial' ? `<span class="dev-badge dev-parcial" title="Quedan ${maxDevolvible(s)} par(es) sin devolver">Parcial</span>`
-                  : "";
-    const puedeDevolver = maxDevolvible(s)>0;
-    const ticket = state.tickets.find(t=>t.id===s.ticketId);
-    const estadoPago = ticket ? (ticket.estadoPago||'completada') : 'completada';
-    const badgePago = estadoPago==='pendiente'
-      ? `<button class="estado-pendiente" onclick="openPendienteModal('${ticket.id}')" title="${ticket.datosCliente&&ticket.datosCliente.nombre ? '👤 '+ticket.datosCliente.nombre : 'Sin datos de cliente'}">⏳ Pendiente${ticket.datosCliente&&ticket.datosCliente.nombre?' — '+escapeHtml(ticket.datosCliente.nombre):''}</button>`
-      : `<span class="estado-completada">✅ Completada</span>`;
-    rowsHistArr.push(`
-    <tr class="${claseTicket[s.ticketId] || 'ticket-row-a'}" data-ticketid="${s.ticketId}">
-      <td>${ticket? ticket.numSerieFactura : "—"}</td>
-      <td>${new Date(s.fecha).toLocaleString('es-ES')}</td>
-      <td>${escapeHtml(s.marca)}</td>
-      <td>${escapeHtml(s.modelo)}</td>
-      <td class="num">${s.talla}</td>
-      <td class="num">${s.cantidad}</td>
-      <td class="num">${eur(s.total)}</td>
-      <td class="num">${eur(beneficioRealSale(s))}</td>
-      <td>${badgePago}</td>
-      <td>${badgeDev}</td>
-      <td style="white-space:nowrap;min-width:110px;">
-        <div style="display:flex;gap:4px;align-items:center;">
-          ${estadoPago==='completada' && ticket ? `<button class="btn small" style="background:var(--gold);border-color:var(--gold);color:#3a2c00;" onclick="openPendienteModal('${ticket.id}')" title="Marcar como pendiente">⏳</button>` : ""}
-          ${estadoPago==='pendiente' && ticket ? `<button class="btn small" style="background:var(--gold);border-color:var(--gold);color:#3a2c00;" onclick="openPendienteModal('${ticket.id}')" title="Ver / editar pendiente">⏳</button>` : ""}
-          ${ticket ? `<button class="btn small secondary" onclick="abrirTicketImprimible('${ticket.id}')" title="Ver / reimprimir ticket">🖨️</button>` : ""}
-          ${puedeDevolver? `<button class="btn small secondary" onclick="openDevolucionModal('${s.id}')" title="Registrar devolución">↩️</button>` : ""}
-          ${ticket ? `<button class="btn small danger" onclick="eliminarTicket('${ticket.id}')" title="Eliminar ticket">🗑️</button>` : ""}
-        </div>
-      </td>
-    </tr>`);
-  });
-  const rowsHist = rowsHistArr.join("") || `<tr><td colspan="11" style="text-align:center;color:var(--ink-dim);">No hay ventas para este filtro.</td></tr>`;
+  const _histCalc = calcularHistorialVentas();
+  const filtered = _histCalc.filtered;
+  const filteredTotal = _histCalc.filteredTotal;
+  const filteredBeneficio = _histCalc.filteredBeneficio;
+  const rowsHist = _histCalc.rowsHist;
 
   return `
     <h2 class="section-title">Punto de venta</h2>
@@ -2336,7 +2375,7 @@ function renderVentas(){
 
     <h2 class="section-title" style="margin-top:20px;">Historial de ventas</h2>
     <div class="toolbar">
-      <input id="ventas-history-search" type="text" placeholder="Filtrar por marca o modelo..." value="${escapeAttr(historyFilter)}" oninput="historyFilter=this.value;render()" style="min-width:200px;">
+      <input id="ventas-history-search" type="text" placeholder="Filtrar por marca o modelo..." value="${escapeAttr(historyFilter)}" oninput="buscarEnHistorialVentas(this.value)" style="min-width:200px;">
       <label style="margin:0;">Ver un día <input type="date" value="${historyFecha||''}" onchange="historyFecha=this.value; historyPeriod = this.value? 'dia_especifico' : 'todos'; render()" style="margin-left:4px;"></label>
       <select onchange="historyFecha=null; historyPeriod=this.value; render();" style="min-width:170px;">
         <option value="todos" ${historyPeriod==='todos'?'selected':''}>Todo el historial</option>
@@ -2356,7 +2395,7 @@ function renderVentas(){
       ${state.sales.length>0 ? `<button class="btn small secondary" onclick="exportLedgerCSV()">📥 CSV</button>` : ""}
       ${state.sales.length>0 ? `<button class="btn small secondary" onclick="exportLedgerJSON()">📥 JSON</button>` : ""}
     </div>
-    <div class="price-row" style="margin-bottom:10px;">
+    <div class="price-row" id="historial-resumen" style="margin-bottom:10px;">
       <span>Ventas en el filtro: <b>${filtered.length}</b></span>
       <span>Total: <b>${eur(filteredTotal)}</b></span>
       <span>Beneficio: <b>${eur(filteredBeneficio)}</b></span>
@@ -2391,11 +2430,10 @@ function renderVentas(){
         <th>Pago</th><th>Dev.</th><th style="min-width:110px;"></th>
       </tr>
       </thead>
-      <tbody>${rowsHist}</tbody>
+      <tbody id="historial-tbody">${rowsHist}</tbody>
     </table>
     </div>
-    <div style="font-size:12.5px;color:var(--ink-dim);margin-top:6px;">${filtered.length} línea(s) · ${[...new Set(filtered.map(s=>s.ticketId))].length} ticket(s)</div>
-    ${filtered.length>200? `<div class="note" style="margin-top:6px;">Mostrando las 200 ventas más recientes. Afina la búsqueda o el periodo para ver el resto.</div>`:""}
+    <div id="historial-pie" style="font-size:12.5px;color:var(--ink-dim);margin-top:6px;">${filtered.length} línea(s) · ${[...new Set(filtered.map(s=>s.ticketId))].length} ticket(s)${filtered.length>200? ' · <span style="color:var(--coral);">mostrando las 200 más recientes — afina la búsqueda para ver el resto</span>':''}</div>
 
     <h2 class="section-title" style="margin-top:20px;">Devoluciones y garantías</h2>
     <div class="note">
@@ -6491,6 +6529,15 @@ document.querySelectorAll(".tabs button").forEach(btn=>{
 // en el mismo instante en que el campo recibe el foco puede interrumpir el
 // aviso interno que Android usa para decidir si muestra el teclado, y en
 // el Kozen el teclado directamente no llegaba a aparecer.
+// Si un campo numérico empieza en "0" (precio o stock todavía sin
+// rellenar) y se escribe sin borrarlo antes, el dígito se pega detrás del
+// cero en vez de sustituirlo, y queda algo como "01". Vaciarlo al tocarlo
+// lo evita sin depender de seleccionar texto, que en los campos numéricos
+// no se comporta igual en todos los navegadores.
+// El cambio de valor se retrasa al siguiente ciclo (setTimeout 0) por
+// prudencia, aunque se comprobó que el teclado que no aparecía en el Kozen
+// no tenía relación con esto: era Android ocultando el teclado en pantalla
+// al detectar el lector de códigos de barras como un teclado físico.
 document.addEventListener('focusin', function(e){
   var el = e.target;
   if(el && el.tagName === 'INPUT' && el.type === 'number' && el.value === '0'){
