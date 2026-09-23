@@ -415,7 +415,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "11.8";
+const APP_VERSION = "11.9";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -6482,10 +6482,21 @@ document.querySelectorAll(".tabs button").forEach(btn=>{
 // cero en vez de sustituirlo, y queda algo como "01". Vaciarlo al tocarlo
 // lo evita sin depender de seleccionar texto, que en los campos numéricos
 // no se comporta igual en todos los navegadores.
+// Si un campo numérico empieza en "0" (precio o stock todavía sin
+// rellenar) y se escribe sin borrarlo antes, el dígito se pega detrás del
+// cero en vez de sustituirlo, y queda algo como "01". Vaciarlo al tocarlo
+// lo evita sin depender de seleccionar texto, que en los campos numéricos
+// no se comporta igual en todos los navegadores.
+// El cambio de valor se retrasa al siguiente ciclo (setTimeout 0): hacerlo
+// en el mismo instante en que el campo recibe el foco puede interrumpir el
+// aviso interno que Android usa para decidir si muestra el teclado, y en
+// el Kozen el teclado directamente no llegaba a aparecer.
 document.addEventListener('focusin', function(e){
   var el = e.target;
   if(el && el.tagName === 'INPUT' && el.type === 'number' && el.value === '0'){
-    el.value = '';
+    setTimeout(function(){
+      if(document.activeElement === el && el.value === '0') el.value = '';
+    }, 0);
   }
 });
 document.addEventListener('focusout', function(e){
