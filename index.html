@@ -415,7 +415,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "11.14";
+const APP_VERSION = "11.16";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -757,14 +757,28 @@ function _fechaCorte(dias){
   return d.toISOString();
 }
 
-// Incorpora al estado local un documento de ticket venido de la nube
+// Incorpora al estado local un documento de ticket venido de la nube.
+// Si el ticket ya existe aquí, se actualiza con los datos de la nube en vez
+// de ignorarlo: antes, cambiar el estado de una venta (pendiente/completada)
+// en un dispositivo no llegaba a los demás, porque esta función solo sabía
+// añadir tickets nuevos, nunca poner al día uno que ya se conocía.
 function _incorporarTicketRemoto(data){
   if(!data || !data.t || !data.t.id) return false;
   var cambios = false;
   if(!state.tickets) state.tickets = [];
   if(!state.sales) state.sales = [];
   var existe = state.tickets.find(function(x){ return x.id===data.t.id; });
-  if(!existe){ state.tickets.push(data.t); cambios = true; }
+  if(!existe){
+    state.tickets.push(data.t);
+    cambios = true;
+  } else if(JSON.stringify(existe) !== JSON.stringify(data.t)){
+    // Se sustituyen los campos en el mismo objeto (no se reemplaza la
+    // entrada del array) para que nada que ya tuviera una referencia a
+    // este ticket se quede con datos obsoletos.
+    Object.keys(existe).forEach(function(k){ delete existe[k]; });
+    Object.assign(existe, data.t);
+    cambios = true;
+  }
   var idsLocales = {};
   state.sales.forEach(function(s){ idsLocales[s.id] = true; });
   (data.l||[]).forEach(function(linea){
@@ -4275,6 +4289,11 @@ function guardarPendiente(ticketId){
     notas: document.getElementById('pd-notas').value.trim()
   };
   saveState();
+  // El ticket vive en su propio documento en Firestore, separado del resto
+  // del estado: saveState() no lo vuelve a subir por sí solo. Sin esto, el
+  // cambio se quedaba solo en este dispositivo y el resto seguía viendo el
+  // estado antiguo, aunque aquí ya apareciera correcto.
+  subirTicket(ticketId);
   closeModal();
   render();
   showToast(`Venta marcada como pendiente ✓`, "ok");
@@ -4285,6 +4304,7 @@ function marcarCompletada(ticketId){
   if(!t) return;
   t.estadoPago = 'completada';
   saveState();
+  subirTicket(ticketId);
   closeModal();
   render();
   showToast(`Venta marcada como completada ✓`, "ok");
@@ -5220,9 +5240,9 @@ function renderEtiquetasModal(){
         </div>
 
         <div class="toolbar">
-          <button class="btn small secondary" onclick="etiquetasPorStock()">Una por unidad en stock</button>
-          <button class="btn small secondary" onclick="etiquetasFijas(1)">Una de cada</button>
-          <button class="btn small secondary" onclick="etiquetasFijas(0)">Poner todo a cero</button>
+          <button class="btn small secondary" onclick="etiquetasPorStock()">Una por unidad en stock${etiquetasFiltroMarca?' (solo '+escapeHtml(etiquetasFiltroModelo||etiquetasFiltroMarca)+')':''}</button>
+          <button class="btn small secondary" onclick="etiquetasFijas(1)">Una de cada${etiquetasFiltroMarca?' (solo '+escapeHtml(etiquetasFiltroModelo||etiquetasFiltroMarca)+')':''}</button>
+          <button class="btn small secondary" onclick="etiquetasFijas(0)">Poner todo a cero${etiquetasFiltroMarca?' (solo '+escapeHtml(etiquetasFiltroModelo||etiquetasFiltroMarca)+')':''}</button>
         </div>
         <div class="field-row">
           <div class="field"><label>Buscar por marca</label>
@@ -5305,8 +5325,21 @@ function actualizarTotalEtiquetas(){
   if(elH) elH.textContent = Math.ceil(total/porHoja);
 }
 
+// Ambas funciones respetan el filtro de marca/modelo activo: si hay uno
+// puesto, solo tocan los artículos que se están viendo en ese momento, no
+// el almacén entero. Sin filtro (todas las marcas), siguen afectando a todo
+// como antes.
+function _claveCoincideConFiltro(k){
+  var partes = k.split('|');
+  var p = state.products.find(function(x){ return x.id===partes[0]; });
+  if(!p) return false;
+  return (!etiquetasFiltroMarca || p.marca===etiquetasFiltroMarca)
+      && (!etiquetasFiltroModelo || p.modelo===etiquetasFiltroModelo);
+}
+
 function etiquetasPorStock(){
   Object.keys(etiquetasSeleccion).forEach(function(k){
+    if(!_claveCoincideConFiltro(k)) return;
     var partes = k.split('|');
     var p = state.products.find(function(x){ return x.id===partes[0]; });
     if(p) etiquetasSeleccion[k] = tallaInfo(p,partes[1]).stock||0;
@@ -5315,7 +5348,10 @@ function etiquetasPorStock(){
 }
 
 function etiquetasFijas(n){
-  Object.keys(etiquetasSeleccion).forEach(function(k){ etiquetasSeleccion[k] = n; });
+  Object.keys(etiquetasSeleccion).forEach(function(k){
+    if(!_claveCoincideConFiltro(k)) return;
+    etiquetasSeleccion[k] = n;
+  });
   renderEtiquetasModal();
 }
 
