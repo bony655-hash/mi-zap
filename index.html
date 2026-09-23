@@ -415,7 +415,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "11.2";
+const APP_VERSION = "11.8";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -1426,15 +1426,18 @@ function tallasRange(){ const a=[]; for(let t=state.settings.tallaMin;t<=state.s
 const TALLAS_ROPA_BEBE = ['0-3M','3-6M','6-9M','9-12M','12-18M','18-24M','2A','3A','4A'];
 const TALLAS_BOLSOS = ['ÚNICA'];
 function tallasParaTipo(tipo){
-  if(tipo==='bolsos') return TALLAS_BOLSOS;
+  if(tipo==='bolsos' || tipo==='otros') return TALLAS_BOLSOS;
   if(tipo==='ropa_bebe') return TALLAS_ROPA_BEBE;
   return tallasRange();
 }
+// Tipos con una única referencia de stock (sin tallas): bolsos y ahora
+// "otros" (paraguas, mochilas y demás artículos que no llevan talla).
+function esTipoUnico(tipo){ return tipo==='bolsos' || tipo==='otros'; }
 function tipoLabel(tipo){
-  return { zapatos:"Zapatos", bolsos:"Bolsos", ropa_bebe:"Ropa de bebé" }[tipo] || "Zapatos";
+  return { zapatos:"Zapatos", bolsos:"Bolsos", ropa_bebe:"Ropa de bebé", otros:"Otros" }[tipo] || "Zapatos";
 }
 function tipoIcono(tipo){
-  return { zapatos:"👟", bolsos:"👜", ropa_bebe:"🧸" }[tipo] || "👟";
+  return { zapatos:"👟", bolsos:"👜", ropa_bebe:"🧸", otros:"📦" }[tipo] || "👟";
 }
 function tallaInfo(p,t){ return (p.tallas && p.tallas[t]) || {stock:0, barcode:""}; }
 function stockTotal(p){ return tallasParaTipo(p.tipoArticulo||'zapatos').reduce((s,t)=> s+(tallaInfo(p,t).stock||0),0); }
@@ -1585,11 +1588,12 @@ function registrarAviso(msg, type){
     repetido.fecha = new Date(ahora).toISOString();
     try{ storage.set(STORAGE_KEY, JSON.stringify(state)); }catch(e){}
     // Solo se vuelve a mostrar en pantalla si ha pasado un buen rato
-    return { mostrar: desde > MINUTOS_SILENCIO_REPETIDO*60*1000 };
+    return { mostrar: desde > MINUTOS_SILENCIO_REPETIDO*60*1000, id: repetido.id };
   }
 
+  var nuevoId = 'av' + (++_avisoSeq) + ahora.toString(36);
   state.avisos.unshift({
-    id: 'av' + (++_avisoSeq) + ahora.toString(36),
+    id: nuevoId,
     texto: texto,
     tipo: type || 'info',
     fecha: new Date(ahora).toISOString(),
@@ -1598,14 +1602,43 @@ function registrarAviso(msg, type){
   });
   if(state.avisos.length > MAX_AVISOS_HISTORIAL) state.avisos.length = MAX_AVISOS_HISTORIAL;
   try{ storage.set(STORAGE_KEY, JSON.stringify(state)); }catch(e){}
-  return { mostrar: true };
+  return { mostrar: true, id: nuevoId };
 }
 
 function cerrarAviso(el){
   if(!el) return;
   if(el._temporizador){ clearTimeout(el._temporizador); el._temporizador = null; }
   el.classList.add('saliendo');
-  setTimeout(function(){ if(el.parentNode) el.parentNode.removeChild(el); }, 200);
+  setTimeout(function(){
+    if(el.parentNode) el.parentNode.removeChild(el);
+    // Recalcular el contador con lo que quede DESPUÉS de retirar este aviso,
+    // tanto si se cerró a mano como si se cerró solo. Antes el texto del
+    // botón solo se actualizaba al crear un aviso nuevo, así que se quedaba
+    // con el número inicial aunque fueras cerrando el resto uno a uno.
+    actualizarContadorAvisos();
+  }, 200);
+}
+
+// Crea, actualiza o retira el botón "Cerrar los N avisos" según cuántos
+// avisos que esperan clic quedan realmente en pantalla ahora mismo.
+function actualizarContadorAvisos(){
+  var pila = document.getElementById('toast-stack');
+  if(!pila) return;
+  var contador = pila.querySelector('.toast-contador');
+  var todos = [].slice.call(pila.querySelectorAll('.toast'));
+  var n = todos.length;
+  var persistentes = todos.filter(function(t){ return !t._temporizador; }).length;
+  if(n >= 2 && persistentes >= 2){
+    if(!contador){
+      contador = document.createElement('div');
+      contador.className = 'toast-contador';
+      contador.onclick = cerrarTodosLosAvisos;
+      pila.insertBefore(contador, pila.firstChild);
+    }
+    contador.textContent = 'Cerrar los ' + n + ' avisos';
+  } else if(contador){
+    contador.parentNode.removeChild(contador);
+  }
 }
 
 function cerrarTodosLosAvisos(){
@@ -1622,10 +1655,10 @@ var SEGUNDOS_AVISO_RUTINA = 3;
 function showToast(msg, type, persistente){
   var reg = registrarAviso(msg, type);
   // Si es una repetición reciente, queda anotada pero no se vuelve a mostrar
-  if(reg && reg.mostrar === false) return;
+  if(reg && reg.mostrar === false) return reg.id;
 
   var pila = document.getElementById('toast-stack');
-  if(!pila) return;
+  if(!pila) return reg ? reg.id : null;
 
   // Por defecto: persistente solo si es un error o advertencia
   var esperaClic = (persistente === undefined) ? (type === 'err') : !!persistente;
@@ -1654,20 +1687,8 @@ function showToast(msg, type, persistente){
   }
 
   // Atajo para cerrarlos todos cuando se acumulan
-  var contador = pila.querySelector('.toast-contador');
-  var n = pila.querySelectorAll('.toast').length;
-  var persistentes = [].slice.call(pila.querySelectorAll('.toast')).filter(function(t){ return !t._temporizador; }).length;
-  if(n >= 2 && persistentes >= 2){
-    if(!contador){
-      contador = document.createElement('div');
-      contador.className = 'toast-contador';
-      contador.onclick = cerrarTodosLosAvisos;
-      pila.insertBefore(contador, pila.firstChild);
-    }
-    contador.textContent = 'Cerrar los ' + n + ' avisos';
-  } else if(contador){
-    contador.parentNode.removeChild(contador);
-  }
+  actualizarContadorAvisos();
+  return reg ? reg.id : null;
 }
 
 // ---- Historial de avisos ----
@@ -1818,7 +1839,7 @@ function tarjetasAlmacen(){
     const sizes = tallasParaTipo(p.tipoArticulo||'zapatos').map(t=>{
       const info = tallaInfo(p,t);
       const codeHint = info.barcode ? ("· cód. "+info.barcode) : "· sin código";
-      const etiqueta = (p.tipoArticulo==='bolsos') ? "Stock" : "Talla "+t;
+      const etiqueta = esTipoUnico(p.tipoArticulo) ? "Stock" : "Talla "+t;
       return `<div class="${studClass(info.stock)}" title="${etiqueta}: ${info.stock} uds ${codeHint}">${t}<small>${info.stock}</small></div>`;
     }).join("");
     const base = precioBaseConPromo(p);
@@ -1874,7 +1895,7 @@ function renderAlmacen(){
     const sizes = tallasParaTipo(p.tipoArticulo||'zapatos').map(t=>{
       const info = tallaInfo(p,t);
       const codeHint = info.barcode ? ("· cód. "+info.barcode) : "· sin código";
-      const etiqueta = (p.tipoArticulo==='bolsos') ? "Stock" : "Talla "+t;
+      const etiqueta = esTipoUnico(p.tipoArticulo) ? "Stock" : "Talla "+t;
       return `<div class="${studClass(info.stock)}" title="${etiqueta}: ${info.stock} uds ${codeHint}">${t}<small>${info.stock}</small></div>`;
     }).join("");
     const base = precioBaseConPromo(p);
@@ -1940,7 +1961,7 @@ function renderAlmacen(){
         <option value="nino" ${almacenGeneroFiltro==='nino'?'selected':''}>Niño/a</option>
       </select>
       <select onchange="almacenCategoriaFiltro=this.value; render();">
-        <option value="todas" ${almacenCategoriaFiltro==='todas'?'selected':''}>Todas las categorías (${state.products.length})</option>
+        <option value="todas" ${almacenCategoriaFiltro==='todas'?'selected':''}>Todas las categorías — ${state.products.length} artículo(s)</option>
         ${categoriasDelAlmacen().map(function(c){
           return `<option value="${escapeAttr(c.valor)}" ${almacenCategoriaFiltro===c.valor?'selected':''}>${escapeHtml(c.etiqueta)} (${c.n})</option>`;
         }).join('')}
@@ -1991,9 +2012,9 @@ function renderVentas(){
           </div>
         </td>
         <td class="num">${escapeHtml(line.tallaManual)}</td>
-        <td class="num"><input type="number" min="1" value="${line.cantidad}" style="width:52px" onchange="cart[${i}].cantidad=parseInt(this.value)||1; render()"></td>
-        <td class="num" style="white-space:nowrap;"><span style="font-weight:700;">${eur(pvp)}/ud</span></td>
-        <td class="num" style="font-weight:700;">${eur(totalLinea)}</td>
+        <td class="num"><input type="number" min="1" value="${line.cantidad}" style="width:58px;font-size:16px;text-align:center;padding:6px 4px;" onchange="cart[${i}].cantidad=parseInt(this.value)||1; render()"></td>
+        <td class="num" style="white-space:nowrap;"><span style="font-weight:700;font-size:15px;">${eur(pvp)}/ud</span></td>
+        <td class="num" style="font-weight:700;font-size:17px;">${eur(totalLinea)}</td>
         <td>
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
             <label style="display:flex;align-items:center;gap:4px;text-transform:none;font-size:12px;margin:0;cursor:pointer;">
@@ -2017,7 +2038,7 @@ function renderVentas(){
     const p = state.products.find(x=>x.id===line.productId);
     if(!p) return "";
     const info = tallaInfo(p, line.talla);
-    const esBolso = (p.tipoArticulo||'zapatos')==='bolsos';
+    const esBolso = esTipoUnico(p.tipoArticulo||'zapatos');
     const tallaOpciones = tallasParaTipo(p.tipoArticulo||'zapatos').filter(t=> tallaInfo(p,t).stock>0 || String(t)===String(line.talla));
 
     // Precio por unidad: base con promo del producto, y luego aplicar el descuento manual de la línea
@@ -2038,12 +2059,12 @@ function renderVentas(){
     // Desglose visual de precios
     const precioOrigIva = precioConIVA(p.precioVenta);
     const precioPromoIva = precioConIVA(baseConPromo);
-    let precioInfo = `<span style="font-weight:700;">${eur(unitConIva)}/ud</span>`;
+    let precioInfo = `<span style="font-weight:700;font-size:15px;">${eur(unitConIva)}/ud</span>`;
     if(p.promo && p.promo.activo){
-      precioInfo = `<span style="font-size:10px;color:var(--ink-dim);"><s>${eur(precioOrigIva)}</s></span> <span style="color:var(--teal);font-weight:700;">${eur(precioPromoIva)}/ud</span>`;
+      precioInfo = `<span style="font-size:11px;color:var(--ink-dim);"><s>${eur(precioOrigIva)}</s></span> <span style="color:var(--teal);font-weight:700;font-size:15px;">${eur(precioPromoIva)}/ud</span>`;
     }
     if(dl.activo && dl.valor>0){
-      precioInfo += ` <span style="font-size:10px;color:var(--gold-dark);">−dto</span> <span style="font-weight:700;color:var(--coral);">${eur(unitConIva)}/ud</span>`;
+      precioInfo += ` <span style="font-size:11px;color:var(--gold-dark);">−dto</span> <span style="font-weight:700;font-size:15px;color:var(--coral);">${eur(unitConIva)}/ud</span>`;
     }
 
     return `
@@ -2061,13 +2082,13 @@ function renderVentas(){
       </td>
       <td class="num">
         ${esBolso ? "Único" : `
-        <select onchange="updateCartTalla(${i}, this.value)">
+        <select onchange="updateCartTalla(${i}, this.value)" style="font-size:16px;font-weight:700;padding:5px 4px;">
           ${tallaOpciones.map(t=>`<option value="${t}" ${String(t)===String(line.talla)?'selected':''}>${t}</option>`).join("")}
         </select>`}
       </td>
-      <td class="num"><input type="number" min="1" max="${info.stock + line.cantidad}" value="${line.cantidad}" style="width:52px" onchange="updateCartQty(${i}, this.value)"></td>
+      <td class="num"><input type="number" min="1" max="${info.stock + line.cantidad}" value="${line.cantidad}" style="width:58px;font-size:16px;text-align:center;padding:6px 4px;" onchange="updateCartQty(${i}, this.value)"></td>
       <td class="num" style="white-space:nowrap;">${precioInfo}</td>
-      <td class="num" style="font-weight:700;">${eur(totalLinea)}</td>
+      <td class="num" style="font-weight:700;font-size:17px;">${eur(totalLinea)}</td>
       <td>
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
           <label style="display:flex;align-items:center;gap:4px;text-transform:none;font-size:12px;margin:0;white-space:nowrap;cursor:pointer;">
@@ -2233,7 +2254,7 @@ function renderVentas(){
     <div class="toolbar" style="margin-top:8px;">
       <select onchange="if(this.value) addManualToCart(this.value); this.value='';" style="min-width:260px;">
         <option value="">Añadir manualmente (sin escáner)...</option>
-        ${state.products.map(p=>`<option value="${p.id}">${escapeHtml(p.marca)} — ${escapeHtml(p.modelo)}</option>`).join("")}
+        ${opcionesProductosPorMarca()}
       </select>
     </div>`}
     ` : `
@@ -2283,8 +2304,8 @@ function renderVentas(){
           <input type="number" step="0.01" min="0" value="${cartDescuentoValor}" style="width:90px" onchange="cartDescuentoValor=parseFloat(this.value)||0; render();" placeholder="Valor">
         ` : ""}
       </div>
-      <div class="price-row" style="justify-content:flex-end;gap:22px;margin-top:12px;">
-        <span>Subtotal: <b>${eur(totals.subtotal)}</b></span>
+      <div class="price-row" style="justify-content:flex-end;gap:22px;margin-top:12px;font-size:14.5px;">
+        <span>Subtotal: <b style="font-size:16px;">${eur(totals.subtotal)}</b></span>
         ${(function(){
           var ahorro = 0;
           cart.forEach(function(l){
@@ -2294,11 +2315,11 @@ function renderVentas(){
               ahorro += (precioConIVA(pr.precioVenta) - precioConIVA(precioBaseConPromo(pr))) * l.cantidad;
             }
           });
-          return ahorro > 0 ? `<span style="color:var(--teal);">🏷️ Ahorro en promociones: <b>${eur(ahorro)}</b></span>` : "";
+          return ahorro > 0 ? `<span style="color:var(--teal);">🏷️ Ahorro en promociones: <b style="font-size:16px;">${eur(ahorro)}</b></span>` : "";
         })()}
-        ${totals.descuentoImporte>0 ? `<span style="color:var(--coral);">Dto. total: <b>-${eur(totals.descuentoImporte)}</b></span>` : ""}
-        <span>IVA: <b>${eur(totals.iva)}</b></span>
-        <span style="font-size:16px;">Total: <b>${eur(totals.total)}</b></span>
+        ${totals.descuentoImporte>0 ? `<span style="color:var(--coral);">Dto. total: <b style="font-size:16px;">-${eur(totals.descuentoImporte)}</b></span>` : ""}
+        <span>IVA: <b style="font-size:16px;">${eur(totals.iva)}</b></span>
+        <span style="font-size:19px;">Total: <b>${eur(totals.total)}</b></span>
       </div>
       <div class="ticket-actions" style="justify-content:flex-end;align-items:center;">
         <label style="margin:0;display:flex;align-items:center;gap:6px;text-transform:none;">
@@ -2502,6 +2523,14 @@ function renderDuplicados(){
       + '</div></div>';
   }).join('');
 
+  var filasProd = dupProd.slice(0,30).map(function(g){
+    return '<div style="padding:6px 0;border-bottom:1px solid var(--line);font-size:12.5px;">'
+      + '<b>' + escapeHtml(g.productos[0].marca + ' ' + g.productos[0].modelo) + '</b> — ' + g.productos.length + ' fichas'
+      + '<div style="font-size:11px;color:var(--ink-dim);">Stock por ficha: '
+      +   g.productos.map(function(p){ return stockTotal(p)+' ud.'; }).join(' · ') + '</div>'
+      + '</div>';
+  }).join('');
+
   var avisoProd = dupProd.length
     ? '<div class="note" style="margin:10px 0;font-size:12.5px;">'
       + 'Hay ' + dupProd.length + ' artículo(s) repetido(s) en el almacén (misma marca y modelo). '
@@ -2513,6 +2542,17 @@ function renderDuplicados(){
 
   var titulo = dupCod.length ? '⚠️ Códigos de barras duplicados' : '⚠️ Artículos repetidos en el almacén';
 
+  // Una sola caja de scroll para todo el contenido, en vez de una por cada
+  // lista: con las dos por separado, pegadas una a la otra, parecía un
+  // scroll duplicado dentro de la misma tarjeta.
+  var listaCombinada = '';
+  if(dupCod.length){
+    listaCombinada += (dupProd.length ? '<div style="font-size:11.5px;font-weight:700;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.4px;margin:4px 0 2px;">Códigos</div>' : '') + filas;
+  }
+  if(dupProd.length){
+    listaCombinada += (dupCod.length ? '<div style="font-size:11.5px;font-weight:700;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.4px;margin:10px 0 2px;">Fichas repetidas</div>' : '') + filasProd;
+  }
+
   return '<div><h3 class="sub-title" style="margin-top:0;">' + titulo + '</h3>'
     + '<div class="ticket" style="width:100%;border-left:4px solid var(--red);">'
     +   (dupCod.length
@@ -2520,18 +2560,7 @@ function renderDuplicados(){
           + 'El escáner cobraría uno por otro.</div>'
         : '<div style="font-size:13px;margin-bottom:6px;">No hay códigos duplicados ✓</div>')
     +   avisoProd
-    +   (dupCod.length ? '<div style="max-height:240px;overflow-y:auto;">' + filas + '</div>' : '')
-    +   (dupProd.length
-        ? '<div style="max-height:200px;overflow-y:auto;margin-top:6px;">'
-          + dupProd.slice(0,30).map(function(g){
-              return '<div style="padding:6px 0;border-bottom:1px solid var(--line);font-size:12.5px;">'
-                + '<b>' + escapeHtml(g.productos[0].marca + ' ' + g.productos[0].modelo) + '</b> — ' + g.productos.length + ' fichas'
-                + '<div style="font-size:11px;color:var(--ink-dim);">Stock por ficha: '
-                +   g.productos.map(function(p){ return stockTotal(p)+' ud.'; }).join(' · ') + '</div>'
-                + '</div>';
-            }).join('')
-          + '</div>'
-        : '')
+    +   '<div style="max-height:340px;overflow-y:auto;">' + listaCombinada + '</div>'
     +   '<div class="ticket-actions" style="margin-top:10px;">'
     +     (dupCod.length ? '<button class="btn accent" onclick="regenerarCodigosDuplicados()">⚙️ Regenerar los códigos duplicados</button>' : '')
     +     (dupProd.length ? '<button class="btn secondary" onclick="currentTab=\'almacen\'; render();">📦 Ir al almacén a revisarlos</button>' : '')
@@ -4814,7 +4843,11 @@ function bloqueDispositivo(){
       if(!usados[cand]) libre = cand;
     }
     state.settings.bloqueEAN = libre || '00';
-    saveState();
+    // Solo local: el bloque es un ajuste propio de este terminal (está en
+    // AJUSTES_LOCALES). Llamar a saveState() aquí empujaría la tienda entera
+    // a Firebase por asignar un número que a nadie más le importa, y ese
+    // envío podía reabrir el aviso de duplicados sin venir a cuento.
+    guardarAjustesLocales();
   }
   return state.settings.bloqueEAN;
 }
@@ -4948,6 +4981,12 @@ function barcodeSVG(code, anchoMm, altoMm){
 }
 
 // ---- Botones del formulario de producto ----
+// Avisos creados por "generar código" MIENTRAS el formulario está abierto.
+// Si se cierra sin guardar, el código no llegó a aplicarse a ningún
+// artículo, así que su aviso se retira del historial: dejarlo ahí sería
+// engañoso, porque el producto sigue con el código de antes.
+var _avisosSesionFormulario = [];
+
 function generarCodigoTalla(talla){
   var code = generarEAN13();
   if(!code){ showToast("No se pudo generar un código libre.", "err"); return; }
@@ -4955,8 +4994,13 @@ function generarCodigoTalla(talla){
     ? document.getElementById("f-bolso-barcode")
     : document.querySelector('.barcode-input[data-talla="'+talla+'"]');
   if(sel){ sel.value = code; }
-  saveState();
-  showToast("Código "+code+" generado ✓", "ok");
+  // Sin guardar aquí: el código solo está en el campo del formulario, no en
+  // la ficha del producto. Si se llamara a saveState() ahora, sincronizaría
+  // con Firebase y podría reabrir el aviso de duplicados en el historial por
+  // algo que todavía ni siquiera está guardado. Se persiste cuando se pulsa
+  // "Guardar" en el propio formulario.
+  var idAviso = showToast("Código "+code+" generado ✓", "ok");
+  if(idAviso) _avisosSesionFormulario.push(idAviso);
 }
 
 function generarCodigosVacios(){
@@ -4976,18 +5020,40 @@ function generarCodigosVacios(){
     var cb = generarEAN13();
     if(cb){ bolso.value = cb; n++; }
   }
-  saveState();
-  showToast(n ? n+" código(s) generado(s) ✓" : "No hay tallas con stock sin código.", n?"ok":"err");
+  // Igual que arriba: no se persiste hasta que se guarde el formulario.
+  var idAviso = showToast(n ? n+" código(s) generado(s) ✓" : "No hay tallas con stock sin código.", n?"ok":"err");
+  if(n && idAviso) _avisosSesionFormulario.push(idAviso);
+}
+
+// Cierra el formulario de producto SIN guardar: retira del historial
+// cualquier aviso de "código generado" creado durante esta edición, porque
+// ninguno llegó a aplicarse de verdad.
+function cerrarFormularioProducto(){
+  if(_avisosSesionFormulario.length && state.avisos && state.avisos.length){
+    var idsSesion = {};
+    _avisosSesionFormulario.forEach(function(id){ idsSesion[id] = true; });
+    var antes = state.avisos.length;
+    // Solo se retiran si siguen sin validar: si el usuario ya los marcó
+    // como leídos desde Informes, se respeta esa acción y no se tocan.
+    state.avisos = state.avisos.filter(function(a){ return !(idsSesion[a.id] && !a.validado); });
+    if(state.avisos.length !== antes){ try{ storage.set(STORAGE_KEY, JSON.stringify(state)); }catch(e){} }
+  }
+  _avisosSesionFormulario = [];
+  closeModal();
 }
 
 // ================= HOJA A4 DE ETIQUETAS =================
 // Formato 3 columnas x 8 filas = 24 etiquetas de 70x37mm (compatible Apli 01787 / Avery L7159)
 var etiquetasSeleccion = {};   // clave "productId|talla" -> nº de etiquetas
+var etiquetasFiltroMarca = '';
+var etiquetasFiltroModelo = '';
 
 function claveEtiqueta(pid, talla){ return pid + '|' + talla; }
 
 function openEtiquetasModal(){
   etiquetasSeleccion = {};
+  etiquetasFiltroMarca = '';
+  etiquetasFiltroModelo = '';
   // Por defecto: una etiqueta por unidad en stock de cada talla con código
   state.products.forEach(function(p){
     tallasParaTipo(p.tipoArticulo||'zapatos').forEach(function(t){
@@ -4998,11 +5064,53 @@ function openEtiquetasModal(){
   renderEtiquetasModal();
 }
 
+// Cambia el filtro de marca/modelo sin perder las cantidades ya tecleadas
+// (etiquetasSeleccion no se toca: solo cambia qué filas se muestran).
+function filtrarEtiquetasPorMarca(marca){
+  etiquetasFiltroMarca = marca;
+  etiquetasFiltroModelo = '';   // el modelo elegido puede no pertenecer a la nueva marca
+  renderEtiquetasModal();
+}
+function filtrarEtiquetasPorModelo(modelo){
+  etiquetasFiltroModelo = modelo;
+  renderEtiquetasModal();
+}
+
 function renderEtiquetasModal(){
   var fmt = formatoEtiquetaActual();
   var filas = '';
   var totalEtiq = 0;
+
+  // Solo cuentan los artículos con algún código de barras: son los únicos
+  // que pueden aparecer en el filtro y en la tabla.
+  var productosConCodigo = state.products.filter(function(p){
+    return tallasParaTipo(p.tipoArticulo||'zapatos').some(function(t){ return tallaInfo(p,t).barcode; });
+  });
+
+  var marcas = Array.from(new Set(productosConCodigo.map(function(p){ return p.marca; })))
+    .sort(function(a,b){ return a.localeCompare(b,'es',{sensitivity:'base'}); });
+  var modelosDisponibles = productosConCodigo.filter(function(p){
+    return !etiquetasFiltroMarca || p.marca===etiquetasFiltroMarca;
+  });
+  var modelos = Array.from(new Set(modelosDisponibles.map(function(p){ return p.modelo; })))
+    .sort(function(a,b){ return a.localeCompare(b,'es',{sensitivity:'base'}); });
+
+  var productosFiltrados = productosConCodigo.filter(function(p){
+    return (!etiquetasFiltroMarca || p.marca===etiquetasFiltroMarca)
+        && (!etiquetasFiltroModelo || p.modelo===etiquetasFiltroModelo);
+  });
+
+  // El total y el nº de hojas siempre cuentan TODO lo seleccionado, no solo
+  // lo que el filtro muestra en este momento: cambiar de marca no debe dar
+  // la impresión de que se ha perdido lo ya marcado en otras marcas.
   state.products.forEach(function(p){
+    tallasParaTipo(p.tipoArticulo||'zapatos').forEach(function(t){
+      var k = claveEtiqueta(p.id,t);
+      if(etiquetasSeleccion[k]) totalEtiq += etiquetasSeleccion[k];
+    });
+  });
+
+  productosFiltrados.forEach(function(p){
     var tallas = tallasParaTipo(p.tipoArticulo||'zapatos').filter(function(t){
       var i = tallaInfo(p,t); return i.barcode;
     });
@@ -5013,7 +5121,6 @@ function renderEtiquetasModal(){
       var info = tallaInfo(p,t);
       var k = claveEtiqueta(p.id,t);
       var n = etiquetasSeleccion[k]||0;
-      totalEtiq += n;
       filas += '<tr>'
         + '<td style="padding-left:22px;">Talla '+t+'</td>'
         + '<td style="font-family:var(--font-mono);font-size:11.5px;">'+escapeHtml(info.barcode)+'</td>'
@@ -5024,7 +5131,11 @@ function renderEtiquetasModal(){
     });
   });
 
-  if(!filas) filas = '<tr><td colspan="4" style="text-align:center;color:var(--ink-dim);">Ningún artículo tiene código de barras todavía. Genera los códigos desde la ficha del producto.</td></tr>';
+  if(!productosConCodigo.length){
+    filas = '<tr><td colspan="4" style="text-align:center;color:var(--ink-dim);">Ningún artículo tiene código de barras todavía. Genera los códigos desde la ficha del producto.</td></tr>';
+  } else if(!filas){
+    filas = '<tr><td colspan="4" style="text-align:center;color:var(--ink-dim);">Ningún artículo coincide con el filtro elegido.</td></tr>';
+  }
 
   document.getElementById("modal-root").innerHTML = `
     <div class="modal-overlay" onclick="if(event.target===this) closeModal()">
@@ -5068,6 +5179,20 @@ function renderEtiquetasModal(){
           <button class="btn small secondary" onclick="etiquetasPorStock()">Una por unidad en stock</button>
           <button class="btn small secondary" onclick="etiquetasFijas(1)">Una de cada</button>
           <button class="btn small secondary" onclick="etiquetasFijas(0)">Poner todo a cero</button>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Buscar por marca</label>
+            <select onchange="filtrarEtiquetasPorMarca(this.value)">
+              <option value="">Todas las marcas</option>
+              ${marcas.map(function(m){ return `<option value="${escapeAttr(m)}" ${etiquetasFiltroMarca===m?'selected':''}>${escapeHtml(m)}</option>`; }).join('')}
+            </select>
+          </div>
+          <div class="field"><label>Buscar por modelo</label>
+            <select onchange="filtrarEtiquetasPorModelo(this.value)">
+              <option value="">Todos los modelos${etiquetasFiltroMarca? ' de '+escapeHtml(etiquetasFiltroMarca) : ''}</option>
+              ${modelos.map(function(m){ return `<option value="${escapeAttr(m)}" ${etiquetasFiltroModelo===m?'selected':''}>${escapeHtml(m)}</option>`; }).join('')}
+            </select>
+          </div>
         </div>
         <div style="max-height:340px;overflow:auto;border-radius:var(--radius-sm);box-shadow:var(--shadow);">
           <table style="box-shadow:none;border-radius:0;">
@@ -5225,7 +5350,7 @@ function imprimirHojaEtiquetas(){
 let productFormFoto = null;
 
 function renderTallaEditorHTML(existingTallas, tipo){
-  if(tipo==='bolsos'){
+  if(esTipoUnico(tipo)){
     const info = (existingTallas && existingTallas['ÚNICA']) || {stock:0, barcode:""};
     return `
       <div class="field-row">
@@ -5327,6 +5452,8 @@ function onTipoArticuloChange(){
 }
 
 function openProductForm(id){
+  // Nueva sesión de edición: sin avisos de "código generado" todavía
+  _avisosSesionFormulario = [];
   const editing = id ? state.products.find(p=>p.id===id) : null;
   const p = editing || { id:null, marca:"", modelo:"", categoria:"", tipoArticulo:"zapatos", genero:"unisex", precioCompra:0, precioVenta:0, promo:{activo:false,tipo:'porcentaje',valor:0}, tallas:{} };
   productFormTallas = p.tallas || {};
@@ -5335,7 +5462,7 @@ function openProductForm(id){
   const tipoActual = p.tipoArticulo || 'zapatos';
 
   document.getElementById("modal-root").innerHTML = `
-    <div class="modal-overlay" onclick="if(event.target===this) closeModal()">
+    <div class="modal-overlay" onclick="if(event.target===this) cerrarFormularioProducto()">
       <div class="modal">
         <h3>${editing? 'Editar producto':'Nuevo producto'}</h3>
         <div class="field-row">
@@ -5360,6 +5487,7 @@ function openProductForm(id){
               <option value="zapatos" ${tipoActual==='zapatos'?'selected':''}>Zapatos</option>
               <option value="bolsos" ${tipoActual==='bolsos'?'selected':''}>Bolsos</option>
               <option value="ropa_bebe" ${tipoActual==='ropa_bebe'?'selected':''}>Ropa de bebé</option>
+              <option value="otros" ${tipoActual==='otros'?'selected':''}>Otros</option>
             </select>
           </div>
           <div class="field"><label>Segmento de cliente</label>
@@ -5375,10 +5503,9 @@ function openProductForm(id){
         <div class="field-row">
           <div class="field"><label>Precio de compra (sin IVA)</label><input type="number" step="0.01" id="f-compra" value="${p.precioCompra}" style="width:100%"></div>
           <div class="field">
-            <label>Precio de venta (sin IVA)</label>
-            <input type="number" step="0.01" id="f-venta" value="${p.precioVenta? p.precioVenta.toFixed(2) : ''}" style="width:100%"
-              oninput="actualizarPreviewPVP()"
-              onchange="ajustarPrecioVentaBonito()">
+            <label>PVP (IVA incluido)</label>
+            <input type="number" step="0.01" id="f-venta" value="${p.precioVenta? precioConIVA(p.precioVenta).toFixed(2) : ''}" style="width:100%"
+              oninput="actualizarPreviewPVP()">
             <div id="f-venta-preview" style="font-size:11px;color:var(--ink-dim);margin-top:3px;font-family:var(--font-mono);"></div>
           </div>
         </div>
@@ -5404,7 +5531,7 @@ function openProductForm(id){
           <div id="talla-editor-container">${renderTallaEditorHTML(productFormTallas, tipoActual)}</div>
         </div>
         <div class="modal-actions">
-          <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+          <button class="btn secondary" onclick="cerrarFormularioProducto()">Cancelar</button>
           <button class="btn accent" onclick="saveProduct('${p.id||''}')">Guardar</button>
         </div>
       </div>
@@ -5419,21 +5546,11 @@ function actualizarPreviewPVP(){
   const el = document.getElementById("f-venta");
   const preview = document.getElementById("f-venta-preview");
   if(!el || !preview) return;
-  const bruto = parseFloat(el.value)||0;
-  if(bruto<=0){ preview.textContent = ""; return; }
-  const conIva = precioConIVA(bruto);
-  preview.textContent = `PVP con IVA: ${eur(conIva)}`;
-}
-function ajustarPrecioVentaBonito(){
-  const el = document.getElementById("f-venta");
-  if(!el) return;
-  const bruto = parseFloat(el.value)||0;
-  if(bruto<=0) return;
-  const ajustado = precioVentaSinIvaRedondeado(bruto, state.settings.ivaRate);
-  precioVentaPreciso = ajustado;
-  el.value = ajustado.toFixed(2);
-  const preview = document.getElementById("f-venta-preview");
-  if(preview) preview.textContent = `PVP con IVA: ${eur(precioConIVA(ajustado))} (ajustado a un precio redondo)`;
+  const conIva = parseFloat(el.value)||0;
+  if(conIva<=0){ preview.textContent = ""; return; }
+  const ivaRate = state.settings.ivaRate;
+  const sinIva = conIva/(1+ivaRate/100);
+  preview.textContent = `Base imponible: ${eur(sinIva)} + IVA (${ivaRate}%)`;
 }
 
 function saveProduct(id){
@@ -5444,19 +5561,18 @@ function saveProduct(id){
   const categoria = document.getElementById("f-categoria").value.trim();
   const genero = document.getElementById("f-genero").value;
   const precioCompra = parseFloat(document.getElementById("f-compra").value)||0;
-  const precioVentaMostrado = parseFloat(document.getElementById("f-venta").value)||0;
-  // Si el campo coincide con el último valor ya ajustado (redondeado a céntimos para mostrarlo),
-  // usamos ese valor con precisión completa. Si el usuario cambió el campo sin que se disparase
-  // el ajuste automático (p. ej. sin salir del campo), lo recalculamos aquí una sola vez.
-  const precioVenta = (Math.abs(precioVentaMostrado - precioVentaPreciso) < 0.005)
-    ? precioVentaPreciso
-    : precioVentaSinIvaRedondeado(precioVentaMostrado, state.settings.ivaRate);
+  const pvpConIvaTecleado = parseFloat(document.getElementById("f-venta").value)||0;
+  // El precio lo elige el usuario tal cual, ya con IVA incluido: no se
+  // redondea a ninguna terminación "bonita". Internamente se sigue
+  // guardando sin IVA (así el resto de la app no cambia), calculado por
+  // simple división, sin tocar la cifra que el usuario ha decidido cobrar.
+  const precioVenta = pvpConIvaTecleado/(1+state.settings.ivaRate/100);
   const promoActivo = document.getElementById("f-promo-activa").checked;
   const promoTipo = document.getElementById("f-promo-tipo").value;
   const promoValor = parseFloat(document.getElementById("f-promo-valor").value)||0;
 
   const tallas = {};
-  if(tipoArticulo==='bolsos'){
+  if(esTipoUnico(tipoArticulo)){
     const stockEl = document.getElementById("f-bolso-stock");
     const barcodeEl = document.getElementById("f-bolso-barcode");
     tallas['ÚNICA'] = { stock: parseInt(stockEl.value)||0, barcode: barcodeEl.value.trim() };
@@ -5492,6 +5608,9 @@ function saveProduct(id){
     state.products.push({id:uid(),marca,modelo,tipoArticulo,categoria,genero,precioCompra,precioVenta,promo:{activo:promoActivo,tipo:promoTipo,valor:promoValor},tallas,foto:productFormFoto,_mod:Date.now()});
   }
   saveState();
+  // El código quedó realmente aplicado: sus avisos son legítimos y se
+  // conservan en el historial, no se retiran al cerrar.
+  _avisosSesionFormulario = [];
   closeModal();
   render();
 }
@@ -5567,12 +5686,13 @@ function openAssignBarcodeModal(code){
                 <option value="zapatos">Zapatos</option>
                 <option value="bolsos">Bolsos</option>
                 <option value="ropa_bebe">Ropa de bebé</option>
+                <option value="otros">Otros</option>
               </select>
             </div>
           </div>
           <div class="field-row">
             <div class="field"><label>Precio compra</label><input type="number" step="0.01" id="new-compra" value="0" style="width:100%"></div>
-            <div class="field"><label>Precio venta (sin IVA)</label><input type="number" step="0.01" id="new-venta" value="0" style="width:100%"></div>
+            <div class="field"><label>PVP (IVA incluido)</label><input type="number" step="0.01" id="new-venta" value="0" style="width:100%"></div>
             <div class="field"><label>Talla</label><select id="new-talla" style="width:100%">${tallasParaTipo('zapatos').map(t=>`<option value="${t}">${t}</option>`).join("")}</select></div>
             <div class="field"><label>Cantidad</label><input type="number" id="new-cantidad" min="1" value="1" style="width:100%"></div>
           </div>
@@ -5621,8 +5741,10 @@ function assignBarcodeNewProduct(code){
   if(!marca||!modelo){ alert("Marca y modelo son obligatorios para crear el producto."); return; }
   const tipoArticulo = document.getElementById("new-tipo").value;
   const precioCompraBruto = parseFloat(document.getElementById("new-compra").value)||0;
-  const precioVentaBruto = parseFloat(document.getElementById("new-venta").value)||0;
-  const precioVenta = precioVentaSinIvaRedondeado(precioVentaBruto, state.settings.ivaRate);
+  const pvpConIvaTecleado = parseFloat(document.getElementById("new-venta").value)||0;
+  // Igual que en el formulario principal: el precio tecleado es el PVP con
+  // IVA tal cual, sin redondear a ninguna terminación concreta.
+  const precioVenta = pvpConIvaTecleado/(1+state.settings.ivaRate/100);
   const talla = document.getElementById("new-talla").value;
   const cantidad = parseInt(document.getElementById("new-cantidad").value)||1;
   const tallas = {}; tallas[talla] = { stock:cantidad, barcode:code };
@@ -5671,6 +5793,29 @@ function addOtroToCart(){
   ventasTab='catalogo'; // volver al catálogo para ver el carrito
   render();
   showToast(`+ ${nombre} añadido al carrito`, "ok");
+}
+
+// Opciones del desplegable de "añadir manualmente", agrupadas por marca y
+// ordenadas alfabéticamente (antes salían en el orden en que se habían
+// guardado, sin agrupar, lo que hacía muy difícil encontrar un artículo
+// con el almacén ya crecido).
+function opcionesProductosPorMarca(){
+  var porMarca = {};
+  state.products.forEach(function(p){
+    var marca = (p.marca || '(Sin marca)').trim() || '(Sin marca)';
+    if(!porMarca[marca]) porMarca[marca] = [];
+    porMarca[marca].push(p);
+  });
+  var marcas = Object.keys(porMarca).sort(function(a,b){ return a.localeCompare(b,'es',{sensitivity:'base'}); });
+  return marcas.map(function(marca){
+    var productos = porMarca[marca].slice().sort(function(a,b){
+      return (a.modelo||'').localeCompare(b.modelo||'','es',{sensitivity:'base'});
+    });
+    var opciones = productos.map(function(p){
+      return '<option value="'+p.id+'">'+escapeHtml(p.modelo)+'</option>';
+    }).join('');
+    return '<optgroup label="'+escapeHtml(marca)+'">'+opciones+'</optgroup>';
+  }).join('');
 }
 
 function addManualToCart(productId){
@@ -6332,6 +6477,24 @@ document.querySelectorAll(".tabs button").forEach(btn=>{
 });
 
 // Arrancar Firebase y luego cargar el estado
+// Si un campo numérico empieza en "0" (precio o stock todavía sin
+// rellenar) y se escribe sin borrarlo antes, el dígito se pega detrás del
+// cero en vez de sustituirlo, y queda algo como "01". Vaciarlo al tocarlo
+// lo evita sin depender de seleccionar texto, que en los campos numéricos
+// no se comporta igual en todos los navegadores.
+document.addEventListener('focusin', function(e){
+  var el = e.target;
+  if(el && el.tagName === 'INPUT' && el.type === 'number' && el.value === '0'){
+    el.value = '';
+  }
+});
+document.addEventListener('focusout', function(e){
+  var el = e.target;
+  if(el && el.tagName === 'INPUT' && el.type === 'number' && el.value.trim() === ''){
+    el.value = '0';
+  }
+});
+
 iniciarFirebase();
 loadState().then(function(){
   // Aviso de actualización. Se compara con la última versión que se ejecutó
