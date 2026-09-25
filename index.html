@@ -415,7 +415,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "11.17";
+const APP_VERSION = "11.19";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -1190,6 +1190,7 @@ let cartDescuentoValor = 0;
 let ventasTab = "catalogo"; // 'catalogo' | 'otro'
 let otroNombre = ""; let otroModelo = ""; let otroTalla = ""; let otroPrecio = ""; let otroCantidad = 1;
 var _scrollGuardado = 0; // scroll guardado ANTES de abrir un modal, para restaurarlo después
+var ticketsSeleccionadosParaBorrar = new Set();   // ids marcados en el registro de ventas para borrado múltiple
 let cartMetodoPago = "efectivo";
 let chartRefs = { monthly:null, top:null, brand:null };
 const PALETTE = ['#FFB020','#3ED07A','#5B8DEF','#E85D75','#B98CE0','#8A93A3','#F2A65A','#43BFB0'];
@@ -1763,6 +1764,26 @@ function renderPreservandoScroll(){
       if(window.scrollTo) window.scrollTo(0, scrollY);
       if(document.documentElement) document.documentElement.scrollTop = scrollY;
       if(document.body) document.body.scrollTop = scrollY;
+    }catch(e){}
+  }, 0);
+}
+
+// Igual que la anterior, pero además conserva el scroll INTERNO de una caja
+// concreta (como la tabla del registro de ventas, que tiene su propio
+// desplazamiento independiente del de la página). Sin esto, borrar un
+// ticket volvía a colocar la lista en su primera fila cada vez.
+function renderPreservandoScrollDe(idContenedor){
+  var scrollY = 0, scrollInterno = 0;
+  try{ scrollY = window.pageYOffset || (document.documentElement && document.documentElement.scrollTop) || (document.body && document.body.scrollTop) || 0; }catch(e){}
+  try{ var el = document.getElementById(idContenedor); if(el) scrollInterno = el.scrollTop; }catch(e){}
+  render();
+  setTimeout(function(){
+    try{
+      if(window.scrollTo) window.scrollTo(0, scrollY);
+      if(document.documentElement) document.documentElement.scrollTop = scrollY;
+      if(document.body) document.body.scrollTop = scrollY;
+      var el2 = document.getElementById(idContenedor);
+      if(el2) el2.scrollTop = scrollInterno;
     }catch(e){}
   }, 0);
 }
@@ -2936,7 +2957,7 @@ function renderInformes(){
   const salesFiltradas = state.sales.filter(s=>matchesKpiPeriod(s.fecha));
   ultimasSalesFiltradas = salesFiltradas;
   const devolucionesFiltradas = state.devoluciones.filter(d=>matchesKpiPeriod(d.fecha));
-  const ticketsFiltrados = state.tickets.filter(t=>matchesKpiPeriod(t.fecha));
+  const ticketsFiltrados = ticketsFiltradosParaRegistro();
 
   const valorStockCompra = state.products.reduce((sum,p)=> sum + stockTotal(p)*p.precioCompra, 0);
   const valorStockVenta = state.products.reduce((sum,p)=> sum + stockTotal(p)*precioConIVA(p.precioVenta), 0);
@@ -3141,16 +3162,21 @@ function renderInformes(){
       Registro numerado de todas las ventas. Puedes filtrar por periodo, reimprimir cualquier ticket o eliminarlo si fue un error.
     </div>
     ${ticketsFiltrados.length? `
-    <div class="toolbar">
+    <div class="toolbar" id="registro-ventas-toolbar">
       <button class="btn secondary" onclick="exportLedgerJSON()">Exportar registro (JSON)</button>
       <button class="btn secondary" onclick="exportLedgerCSV()">Exportar registro (CSV)</button>
+      ${ticketsSeleccionadosParaBorrar.size ? `<button class="btn danger" onclick="eliminarTicketsSeleccionados()">🗑️ Eliminar ${ticketsSeleccionadosParaBorrar.size} seleccionado(s)</button>` : ''}
     </div>
-    <div style="max-height:480px;overflow:auto;-webkit-overflow-scrolling:touch;border-radius:var(--radius-sm);box-shadow:var(--shadow);">
+    <div id="registro-ventas-scroll" style="max-height:480px;overflow:auto;-webkit-overflow-scrolling:touch;border-radius:var(--radius-sm);box-shadow:var(--shadow);">
     <table style="box-shadow:none;border-radius:0;">
-      <thead style="position:sticky;top:0;z-index:2;"><tr><th>Serie/Nº</th><th>Fecha</th><th class="num">Total</th><th>Descuento</th><th>Pago</th><th></th></tr></thead>
+      <thead style="position:sticky;top:0;z-index:2;"><tr>
+        <th style="width:36px;"><input type="checkbox" ${ticketsFiltrados.length && ticketsFiltrados.every(t=>ticketsSeleccionadosParaBorrar.has(t.id))?'checked':''} onchange="toggleTodosTicketsSeleccionados(this.checked)" title="Seleccionar todos los mostrados"></th>
+        <th>Serie/Nº</th><th>Fecha</th><th class="num">Total</th><th>Descuento</th><th>Pago</th><th></th>
+      </tr></thead>
       <tbody>
         ${[...ticketsFiltrados].sort((a,b)=>b.fecha.localeCompare(a.fecha)).map(t=>`
           <tr>
+            <td><input type="checkbox" ${ticketsSeleccionadosParaBorrar.has(t.id)?'checked':''} onchange="toggleTicketSeleccionado('${t.id}', this.checked)"></td>
             <td>${t.numSerieFactura}</td>
             <td>${new Date(t.fecha).toLocaleString('es-ES')}</td>
             <td class="num">${eur(t.total)}</td>
@@ -4316,6 +4342,115 @@ function marcarCompletada(ticketId){
   showToast(`Venta marcada como completada ✓`, "ok");
 }
 
+// Mismo filtrado que usa la tabla del registro de ventas, extraído para
+// poder reutilizarlo desde "seleccionar todos".
+function ticketsFiltradosParaRegistro(){
+  return state.tickets.filter(t=>matchesKpiPeriod(t.fecha));
+}
+
+// Actualiza solo el botón de borrado múltiple y la casilla de "todos", sin
+// repintar la pestaña entera. Antes, marcar una sola casilla volvía a
+// generar toda la pestaña de Informes -incluidos los gráficos-, y eso se
+// notaba como un parpadeo al reconstruirse tantos elementos de golpe.
+function _actualizarSeleccionTickets(){
+  var toolbar = document.getElementById('registro-ventas-toolbar');
+  if(!toolbar){ renderPreservandoScrollDe('registro-ventas-scroll'); return; }  // la pestaña ya no está: repintar entero
+
+  var n = ticketsSeleccionadosParaBorrar.size;
+  var btnExistente = [...toolbar.querySelectorAll('button')].find(function(b){ return b.textContent.indexOf('Eliminar') === 0 || /^🗑️ Eliminar/.test(b.textContent); });
+  if(n > 0){
+    if(btnExistente){
+      btnExistente.textContent = '🗑️ Eliminar ' + n + ' seleccionado(s)';
+    } else {
+      var btn = document.createElement('button');
+      btn.className = 'btn danger';
+      btn.textContent = '🗑️ Eliminar ' + n + ' seleccionado(s)';
+      btn.onclick = eliminarTicketsSeleccionados;
+      toolbar.appendChild(btn);
+    }
+  } else if(btnExistente){
+    btnExistente.remove();
+  }
+
+  var headCb = document.querySelector('#registro-ventas-scroll thead input[type=checkbox]');
+  if(headCb){
+    var filtrados = ticketsFiltradosParaRegistro();
+    headCb.checked = filtrados.length>0 && filtrados.every(function(t){ return ticketsSeleccionadosParaBorrar.has(t.id); });
+  }
+}
+
+function toggleTicketSeleccionado(ticketId, marcado){
+  if(marcado) ticketsSeleccionadosParaBorrar.add(ticketId);
+  else ticketsSeleccionadosParaBorrar.delete(ticketId);
+  _actualizarSeleccionTickets();
+}
+
+function toggleTodosTicketsSeleccionados(marcarTodos){
+  const filtrados = ticketsFiltradosParaRegistro();
+  filtrados.forEach(t=>{
+    if(marcarTodos) ticketsSeleccionadosParaBorrar.add(t.id);
+    else ticketsSeleccionadosParaBorrar.delete(t.id);
+  });
+  // Igual que al marcar una sola: se actualizan las casillas ya presentes
+  // en el DOM directamente, sin repintar la tabla ni la pestaña entera.
+  var filas = document.querySelectorAll('#registro-ventas-scroll tbody input[type=checkbox]');
+  filas.forEach(function(cb){ cb.checked = marcarTodos; });
+  _actualizarSeleccionTickets();
+}
+
+function eliminarTicketsSeleccionados(){
+  const ids = [...ticketsSeleccionadosParaBorrar];
+  if(!ids.length) return;
+  const tickets = state.tickets.filter(t=>ids.includes(t.id));
+  const totalImporte = tickets.reduce((a,t)=>a+t.total, 0);
+  const conDevs = tickets.filter(t=> state.devoluciones.some(d=>d.ticketId===t.id));
+
+  const aviso = conDevs.length
+    ? `<p style="color:var(--red);font-size:13px;">⚠️ ${conDevs.length} de ellos tienen devoluciones registradas. Al eliminarlos también se borrarán esas devoluciones.</p>`
+    : `<p style="color:var(--ink-dim);font-size:13px;">Se repondrá el stock de los artículos vendidos en estos tickets. Esta acción no se puede deshacer.</p>`;
+
+  try{ _scrollGuardado = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0; }catch(e){ _scrollGuardado=0; }
+
+  document.getElementById("modal-root").innerHTML = `
+    <div class="modal-overlay">
+      <div class="modal" style="max-width:420px;">
+        <h3>🗑️ Eliminar ${ids.length} ticket(s)</h3>
+        <p>¿Eliminar los <b>${ids.length}</b> tickets seleccionados, por un total de <b>${eur(totalImporte)}</b>?</p>
+        ${aviso}
+        <div class="modal-actions" style="justify-content:center;gap:12px;">
+          <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+          <button class="btn danger" onclick="confirmarEliminarTicketsSeleccionados()">🗑️ Sí, eliminar</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function confirmarEliminarTicketsSeleccionados(){
+  const ids = [...ticketsSeleccionadosParaBorrar];
+  ids.forEach(ticketId=>{
+    const lineas = state.sales.filter(s=>s.ticketId===ticketId);
+    lineas.forEach(s=>{
+      if(s.productId==='__manual__') return;
+      const p = state.products.find(x=>x.id===s.productId);
+      if(p){
+        const info = tallaInfo(p, s.talla);
+        if(!p.tallas[s.talla]) p.tallas[s.talla] = {stock:0, barcode:""};
+        p.tallas[s.talla].stock = (info.stock||0) + s.cantidad;
+      }
+    });
+    state.sales = state.sales.filter(s=>s.ticketId!==ticketId);
+    state.devoluciones = state.devoluciones.filter(d=>d.ticketId!==ticketId);
+    state.tickets = state.tickets.filter(x=>x.id!==ticketId);
+    borrarTicketRemoto(ticketId);
+  });
+  ticketsSeleccionadosParaBorrar.clear();
+  saveState();
+  closeModal();
+  renderPreservandoScrollDe('registro-ventas-scroll');
+  showToast(`${ids.length} ticket(s) eliminado(s) y stock repuesto ✓`, "ok");
+}
+
 function eliminarTicket(ticketId){
   borrarTicketRemoto(ticketId);
 
@@ -4362,9 +4497,10 @@ function confirmarEliminarTicket(ticketId){
   state.sales = state.sales.filter(s=>s.ticketId!==ticketId);
   state.devoluciones = state.devoluciones.filter(d=>d.ticketId!==ticketId);
   state.tickets = state.tickets.filter(x=>x.id!==ticketId);
+  ticketsSeleccionadosParaBorrar.delete(ticketId);
   saveState();
   closeModal();
-  render();
+  renderPreservandoScrollDe('registro-ventas-scroll');
   showToast("Ticket eliminado y stock repuesto ✓", "ok");
 }
 
