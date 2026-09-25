@@ -415,7 +415,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "11.16";
+const APP_VERSION = "11.17";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -1203,7 +1203,7 @@ function defaultState(){
       escposActivo: false, rawbtMetodo: "auto", escposEuro: "eur", escposMargenPie: 6, escposLogo: true, escposLogoOffsetX: 0, escposPagina: 19, escposColumnas: 48, escposCortar: true, escposCajon: true,
       prefijoEAN: "20", contadorEAN: 0, autoEAN: true, bloqueEAN: null,
       etiqFormato: "apli01787", etiqOffsetX: 0, etiqOffsetY: 0, etiqEscala: 100,
-      ivaRate:21, recargoEquivalencia:5.2, tallaMin:35, tallaMax:46,
+      ivaRate:21, recargoEquivalencia:5.2, tallaMin:27, tallaMax:46,
       nombreTienda:"Mil Pasos", nif:"", serieFactura:"T", serieDevolucion:"DEV",
       autoImprimir:true, cajonHabilitado:false, demoSeeded:false,
       // Datos de contacto de la tienda
@@ -1325,6 +1325,12 @@ async function loadState(){
   if(!state.settings.nombreTienda ||
      /^(mi\s*zapater[ií]a|zapater[ií]a|mil\s*pasos)$/i.test(String(state.settings.nombreTienda).trim())){
     state.settings.nombreTienda = "Mil Pasos";
+  }
+  // El rango de tallas pasó a ser 27-46 (antes 35-46, sin tallas infantiles).
+  // Solo se toca si sigue en el valor de fábrica sin modificar a mano, para
+  // no pisar un rango que se hubiera ajustado deliberadamente.
+  if(state.settings.tallaMin===35 && state.settings.tallaMax===46){
+    state.settings.tallaMin = 27;
   }
   // Valores por defecto de los ajustes propios del dispositivo
   if(state.settings.prefijoEAN===undefined) state.settings.prefijoEAN="20";
@@ -5463,10 +5469,12 @@ function renderTallaEditorHTML(existingTallas, tipo){
     <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
       <button type="button" class="btn small secondary" onclick="generarCodigosVacios()" title="Genera un EAN-13 para cada talla que tenga stock y no tenga código">⚙️ Generar códigos que falten</button>
     </div>
-    <table class="talla-editor">
-      <thead><tr><th>${labelTalla}</th><th>Stock</th><th>Código de barras</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
+    <div style="max-height:320px;overflow-y:auto;border-radius:var(--radius-sm);box-shadow:var(--shadow);">
+      <table class="talla-editor" style="box-shadow:none;border-radius:0;">
+        <thead style="position:sticky;top:0;z-index:2;"><tr><th>${labelTalla}</th><th>Stock</th><th>Código de barras</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
   `;
 }
 
