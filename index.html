@@ -416,7 +416,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "12.1";
+const APP_VERSION = "12.3";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -435,6 +435,13 @@ var fbRef = null;
 var fbTickets = null;   // subcolección: un documento por ticket
 var fbEscuchando = false;
 var _guardandoEnFb = false; // evita bucle: guardar→onSnapshot→guardar
+// Última cifra de productos que se ha visto de verdad en la nube (no en
+// local). null = todavía no se ha podido comprobar en esta sesión.
+var _ultimoConteoRemoto = null;
+// Solo true justo después de que el usuario pida expresamente "Borrar todos
+// los datos": es la ÚNICA situación en la que de verdad se quiere subir un
+// almacén vacío por encima de lo que hubiera en la nube.
+var _borradoIntencional = false;
 
 function iniciarFirebase(){
   try{
@@ -1054,6 +1061,17 @@ function revisarOcupacion(){
 function guardarEnFirebase(){
   if(!fbRef) return;
   if(_guardandoEnFb) return;
+  // Red de seguridad: nunca subir un almacén vacío por encima de una nube
+  // que sí tenía productos, salvo que el usuario haya pedido expresamente
+  // borrarlo todo. Sin esto, cualquier fallo que deje el estado local
+  // vacío por un instante (almacenamiento borrado, un fallo de sincronía al
+  // arrancar...) podía sobrescribir el catálogo real de la tienda entera.
+  if(state.products.length===0 && _ultimoConteoRemoto>0 && !_borradoIntencional){
+    console.error('BLOQUEADO: se intentó guardar un almacén vacío teniendo '+_ultimoConteoRemoto+' productos confirmados en la nube.');
+    showToast('⚠️ No se ha guardado: el almacén aparece vacío pero la nube tiene productos. Recarga la app antes de seguir.', 'err', true);
+    return;
+  }
+  _borradoIntencional = false;
   try{
     var sinFotos = JSON.parse(JSON.stringify(state));
     sinFotos.products.forEach(function(p){ delete p.foto; });
@@ -1102,6 +1120,7 @@ function iniciarEscuchaFirebase(){
     try{
       var remoto = doc.data();
       if(!remoto || !Array.isArray(remoto.products)) return;
+      _ultimoConteoRemoto = remoto.products.length;
       // Ignorar si el timestamp no cambió (mismos datos)
       if(remoto._ts && remoto._ts === _ultimoTs) return;
       _ultimoTs = remoto._ts || 0;
@@ -1209,7 +1228,7 @@ function defaultState(){
       ivaRate:21, recargoEquivalencia:5.2, tallaMin:27, tallaMax:46,
       tallaMinAdulto:36, tallaMaxAdulto:46, tallaMinNino:28, tallaMaxNino:35,
       nombreTienda:"Mil Pasos", nif:"", serieFactura:"T", serieDevolucion:"DEV",
-      autoImprimir:true, cajonHabilitado:false, demoSeeded:false,
+      autoImprimir:true, cajonHabilitado:false,
       // Datos de contacto de la tienda
       direccion:"", telefono:"", email:"", web:"",
       // Control de qué aparece en el ticket
@@ -1292,6 +1311,7 @@ async function loadState(){
       if(snap.exists){
         var remoto = snap.data();
         if(remoto && Array.isArray(remoto.products)){
+          _ultimoConteoRemoto = remoto.products.length;
           // Conservar fotos locales (no están en Firebase)
           var fotosLocales = {};
           if(state && state.products) state.products.forEach(function(p){ if(p.foto) fotosLocales[p.id]=p.foto; });
@@ -1336,6 +1356,15 @@ async function loadState(){
   if(state.settings.tallaMin===35 && state.settings.tallaMax===46){
     state.settings.tallaMin = 27;
   }
+  // Los rangos por segmento (adulto/niño) son ajustes nuevos: cualquier
+  // tienda que ya existiera de antes no los tiene guardados, y sin ellos
+  // tallasParaTipo() devolvía una lista VACÍA para todos los zapatos —
+  // por eso aparecía "0 pares" en todo el almacén aunque el stock real
+  // seguía intacto en la nube, sin haberse perdido nada.
+  if(state.settings.tallaMinAdulto===undefined) state.settings.tallaMinAdulto=36;
+  if(state.settings.tallaMaxAdulto===undefined) state.settings.tallaMaxAdulto=46;
+  if(state.settings.tallaMinNino===undefined) state.settings.tallaMinNino=28;
+  if(state.settings.tallaMaxNino===undefined) state.settings.tallaMaxNino=35;
   // Valores por defecto de los ajustes propios del dispositivo
   if(state.settings.prefijoEAN===undefined) state.settings.prefijoEAN="20";
   if(state.settings.contadorEAN===undefined) state.settings.contadorEAN=0;
@@ -1453,7 +1482,17 @@ function eur(n){ return (Math.round((n+Number.EPSILON)*100)/100).toLocaleString(
 function eurSinDivisa(n){ return (Math.round((n+Number.EPSILON)*100)/100).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function pct(n){ return (Math.round(n*10)/10)+" %"; }
 function tallasRange(){ const a=[]; for(let t=state.settings.tallaMin;t<=state.settings.tallaMax;t++) a.push(t); return a; }
-function tallasRangeEntre(min,max){ const a=[]; for(let t=min;t<=max;t++) a.push(t); return a; }
+function tallasRangeEntre(min,max){
+  // Red de seguridad: si alguno de los dos números no está definido (un
+  // ajuste nuevo que todavía no se ha migrado, por ejemplo), no se genera
+  // una lista vacía en silencio -que hace que el stock de todo parezca
+  // "0 pares"-, se cae a un rango por defecto sensato.
+  if(typeof min !== 'number' || isNaN(min) || typeof max !== 'number' || isNaN(max) || min>max){
+    console.error('tallasRangeEntre recibió un rango inválido (min='+min+', max='+max+'); usando 36-46 por defecto.');
+    min = 36; max = 46;
+  }
+  const a=[]; for(let t=min;t<=max;t++) a.push(t); return a;
+}
 const TALLAS_ROPA_BEBE = ['0-3M','3-6M','6-9M','9-12M','12-18M','18-24M','2A','3A','4A'];
 const TALLAS_BOLSOS = ['ÚNICA'];
 function tallasParaTipo(tipo, genero){
@@ -2990,150 +3029,163 @@ function renderAjustes(){
   return `
     <h2 class="section-title">Ajustes</h2>
     <div class="panel-duo">${renderImpresoraTermica()}${renderAvisos()}</div>
-    <h3 class="sub-title" style="margin-top:28px;">Exportar informe a PDF</h3>
-    <div class="ticket" style="width:100%;max-width:560px;">
-      <div style="margin-bottom:12px;font-size:13px;color:var(--ink-dim);">
-        Genera un PDF con el resumen de ventas, detalle de tickets y devoluciones del periodo que elijas.
-        Perfecto para la gestoría o para tus archivos.
-      </div>
-      <div class="field">
-        <label>Periodo del informe</label>
-        <select id="pdf-periodo" style="width:100%" onchange="pdfPeriodo=this.value; document.getElementById('pdf-rango').style.display=this.value==='personalizado'?'flex':'none';">
-          ${PERIODOS_PDF.map(p=>`<option value="${p.value}" ${pdfPeriodo===p.value?'selected':''}>${p.label}</option>`).join('')}
-        </select>
-      </div>
-      <div id="pdf-rango" class="field-row" style="display:${pdfPeriodo==='personalizado'?'flex':'none'};">
-        <div class="field"><label>Desde</label><input type="date" value="${pdfFrom||''}" onchange="pdfFrom=this.value" style="width:100%"></div>
-        <div class="field"><label>Hasta</label><input type="date" value="${pdfTo||''}" onchange="pdfTo=this.value" style="width:100%"></div>
-      </div>
-      <button class="btn accent" onclick="exportarPDF()">📄 Generar PDF</button>
-    </div>
-
-    <h3 class="sub-title">Copia de seguridad y actualización</h3>
-    <div class="ticket" style="width:100%;max-width:560px;">
-      <div class="note" style="margin-bottom:14px;">
-        Cuando recibas una versión nueva de la app (por ejemplo, con errores corregidos), es un archivo distinto y
-        empieza sin tus datos. Para no perder nada: <b>1)</b> aquí, en la versión que usas ahora, pulsa "Descargar copia".
-        <b>2)</b> Abre la versión nueva. <b>3)</b> En su pantalla de Ajustes, pulsa "Restaurar copia" y elige el archivo
-        que descargaste. Así tus productos, ventas y tickets pasan intactos a la versión nueva.
-      </div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
-        <button class="btn accent" onclick="exportarCopiaSeguridad()">💾 Descargar copia</button>
-        <button class="btn secondary" onclick="document.getElementById('import-backup-input').click()">📂 Restaurar copia</button>
-        <input type="file" accept="application/json,.json" id="import-backup-input" style="display:none" onchange="importarCopiaSeguridad(this)">
-      </div>
-      <div style="margin-top:12px;font-size:12px;color:var(--ink-dim);">
-        Versión de la app: <b>v${APP_VERSION}</b>. Te recomiendo descargar una copia de vez en cuando (por ejemplo, al final de cada semana) por seguridad.
-      </div>
-
-      <div style="border-top:2px dashed var(--red-light);margin:20px 0 16px;padding-top:16px;">
-        <div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:8px;">⚠️ Zona peligrosa</div>
-        <div style="font-size:13px;color:var(--ink-dim);margin-bottom:12px;">
-          Borra <b>absolutamente todos los datos</b>: productos, ventas, tickets, fotos y ajustes.
-          No se puede deshacer. Descarga una copia de seguridad antes si no quieres perder nada.
-        </div>
-        <button class="btn danger" onclick="borrarTodosLosDatos()">🗑️ Borrar todos los datos y empezar de cero</button>
-      </div>
-    </div>
-
-    <h3 class="sub-title">Ajustes</h3>
-    <div class="ticket" style="width:100%;max-width:560px;">
-      <div class="field">
-        <label>Nombre de la tienda</label>
-        <input type="text" style="width:100%" value="${escapeAttr(state.settings.nombreTienda)}" onchange="state.settings.nombreTienda=this.value; document.getElementById('storeName').textContent=this.value.toUpperCase(); saveState()">
-      </div>
-      <div class="field">
-        <label>NIF / CIF de la tienda</label>
-        <input type="text" style="width:100%" value="${escapeAttr(state.settings.nif)}" placeholder="Ej. 12345678A" onchange="state.settings.nif=this.value.trim(); saveState()">
-      </div>
-      <div class="field">
-        <label>Dirección</label>
-        <input type="text" style="width:100%" value="${escapeAttr(state.settings.direccion||'')}" placeholder="Calle, número, ciudad..." onchange="state.settings.direccion=this.value; saveState()">
-      </div>
-      <div class="field-row">
-        <div class="field"><label>Teléfono</label><input type="tel" style="width:100%" value="${escapeAttr(state.settings.telefono||'')}" placeholder="600 000 000" onchange="state.settings.telefono=this.value; saveState()"></div>
-        <div class="field"><label>Email</label><input type="email" style="width:100%" value="${escapeAttr(state.settings.email||'')}" placeholder="tienda@email.com" onchange="state.settings.email=this.value; saveState()"></div>
-      </div>
-      <div class="field">
-        <label>Web / Redes sociales</label>
-        <input type="text" style="width:100%" value="${escapeAttr(state.settings.web||'')}" placeholder="www.mitienda.com · @mitienda" onchange="state.settings.web=this.value; saveState()">
-      </div>
-      <div class="field">
-        <label style="display:flex;align-items:center;gap:8px;text-transform:none;">
-          <input type="checkbox" ${state.settings.autoImprimir!==false?'checked':''} onchange="state.settings.autoImprimir=this.checked; saveState()" style="width:auto;">
-          Imprimir el ticket automáticamente al pulsar "Cobrar"
-        </label>
-        <div class="note" style="margin-top:8px;font-size:11.5px;">
-          La impresora y el cajón se configuran más abajo, en <b>🖨️ Impresora térmica</b>.
-          La serie del ticket se asigna sola según el mes: 26E, 26F, 26M…
+    <div class="panel-duo">
+      <div>
+        <h3 class="sub-title" style="margin-top:0;">Exportar informe a PDF</h3>
+        <div class="ticket" style="width:100%;">
+          <div style="margin-bottom:12px;font-size:13px;color:var(--ink-dim);">
+            Genera un PDF con el resumen de ventas, detalle de tickets y devoluciones del periodo que elijas.
+            Perfecto para la gestoría o para tus archivos.
+          </div>
+          <div class="field">
+            <label>Periodo del informe</label>
+            <select id="pdf-periodo" style="width:100%" onchange="pdfPeriodo=this.value; document.getElementById('pdf-rango').style.display=this.value==='personalizado'?'flex':'none';">
+              ${PERIODOS_PDF.map(p=>`<option value="${p.value}" ${pdfPeriodo===p.value?'selected':''}>${p.label}</option>`).join('')}
+            </select>
+          </div>
+          <div id="pdf-rango" class="field-row" style="display:${pdfPeriodo==='personalizado'?'flex':'none'};">
+            <div class="field"><label>Desde</label><input type="date" value="${pdfFrom||''}" onchange="pdfFrom=this.value" style="width:100%"></div>
+            <div class="field"><label>Hasta</label><input type="date" value="${pdfTo||''}" onchange="pdfTo=this.value" style="width:100%"></div>
+          </div>
+          <button class="btn accent" onclick="exportarPDF()">📄 Generar PDF</button>
         </div>
       </div>
-      <div class="field-row">
-        <div class="field"><label>Tipo de IVA (%)</label><input type="number" step="0.5" value="${state.settings.ivaRate}" onchange="state.settings.ivaRate=parseFloat(this.value)||0; saveState(); render()"></div>
-        <div class="field"><label>Talla mínima general</label><input type="number" value="${state.settings.tallaMin}" onchange="state.settings.tallaMin=parseInt(this.value)||27; saveState(); render()"></div>
-        <div class="field"><label>Talla máxima general</label><input type="number" value="${state.settings.tallaMax}" onchange="state.settings.tallaMax=parseInt(this.value)||46; saveState(); render()"></div>
-      </div>
-      <div class="note" style="margin:4px 0 10px;font-size:11.5px;">
-        El rango general de arriba solo se usa si algún artículo no tiene segmento de cliente asignado. En zapatos normales, el número de tallas que se ofrece depende de este segmento:
-      </div>
-      <div class="field-row">
-        <div class="field"><label>Talla mínima — Hombre/Mujer/Unisex</label><input type="number" value="${state.settings.tallaMinAdulto}" onchange="state.settings.tallaMinAdulto=parseInt(this.value)||36; saveState(); render()"></div>
-        <div class="field"><label>Talla máxima — Hombre/Mujer/Unisex</label><input type="number" value="${state.settings.tallaMaxAdulto}" onchange="state.settings.tallaMaxAdulto=parseInt(this.value)||46; saveState(); render()"></div>
-      </div>
-      <div class="field-row">
-        <div class="field"><label>Talla mínima — Niño/a</label><input type="number" value="${state.settings.tallaMinNino}" onchange="state.settings.tallaMinNino=parseInt(this.value)||28; saveState(); render()"></div>
-        <div class="field"><label>Talla máxima — Niño/a</label><input type="number" value="${state.settings.tallaMaxNino}" onchange="state.settings.tallaMaxNino=parseInt(this.value)||35; saveState(); render()"></div>
+
+      <div>
+        <h3 class="sub-title" style="margin-top:0;">Copia de seguridad y actualización</h3>
+        <div class="ticket" style="width:100%;">
+          <div class="note" style="margin-bottom:14px;">
+            Cuando recibas una versión nueva de la app (por ejemplo, con errores corregidos), es un archivo distinto y
+            empieza sin tus datos. Para no perder nada: <b>1)</b> aquí, en la versión que usas ahora, pulsa "Descargar copia".
+            <b>2)</b> Abre la versión nueva. <b>3)</b> En su pantalla de Ajustes, pulsa "Restaurar copia" y elige el archivo
+            que descargaste. Así tus productos, ventas y tickets pasan intactos a la versión nueva.
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+            <button class="btn accent" onclick="exportarCopiaSeguridad()">💾 Descargar copia</button>
+            <button class="btn secondary" onclick="document.getElementById('import-backup-input').click()">📂 Restaurar copia</button>
+            <input type="file" accept="application/json,.json" id="import-backup-input" style="display:none" onchange="importarCopiaSeguridad(this)">
+          </div>
+          <div style="margin-top:12px;font-size:12px;color:var(--ink-dim);">
+            Versión de la app: <b>v${APP_VERSION}</b>. Te recomiendo descargar una copia de vez en cuando (por ejemplo, al final de cada semana) por seguridad.
+          </div>
+
+          <div style="border-top:2px dashed var(--red-light);margin:20px 0 16px;padding-top:16px;">
+            <div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:8px;">⚠️ Zona peligrosa</div>
+            <div style="font-size:13px;color:var(--ink-dim);margin-bottom:12px;">
+              Borra <b>absolutamente todos los datos</b>: productos, ventas, tickets, fotos y ajustes.
+              No se puede deshacer. Descarga una copia de seguridad antes si no quieres perder nada.
+            </div>
+            <button class="btn danger" onclick="borrarTodosLosDatos()">🗑️ Borrar todos los datos y empezar de cero</button>
+          </div>
+        </div>
       </div>
     </div>
 
-    <h3 class="sub-title">Personalizar el ticket de compra</h3>
-    <div class="ticket" style="width:100%;max-width:560px;">
-      <div class="note" style="margin-bottom:14px;">Elige qué aparece en el ticket que se entrega al cliente. Los cambios se aplican desde el siguiente ticket que imprimas.</div>
+    <div class="panel-duo">
+      <div>
+        <h3 class="sub-title" style="margin-top:0;">Ajustes</h3>
+        <div class="ticket" style="width:100%;">
+          <div class="field">
+            <label>Nombre de la tienda</label>
+            <input type="text" style="width:100%" value="${escapeAttr(state.settings.nombreTienda)}" onchange="state.settings.nombreTienda=this.value; document.getElementById('storeName').textContent=this.value.toUpperCase(); saveState()">
+          </div>
+          <div class="field">
+            <label>NIF / CIF de la tienda</label>
+            <input type="text" style="width:100%" value="${escapeAttr(state.settings.nif)}" placeholder="Ej. 12345678A" onchange="state.settings.nif=this.value.trim(); saveState()">
+          </div>
+          <div class="field">
+            <label>Dirección</label>
+            <input type="text" style="width:100%" value="${escapeAttr(state.settings.direccion||'')}" placeholder="Calle, número, ciudad..." onchange="state.settings.direccion=this.value; saveState()">
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Teléfono</label><input type="tel" style="width:100%" value="${escapeAttr(state.settings.telefono||'')}" placeholder="600 000 000" onchange="state.settings.telefono=this.value; saveState()"></div>
+            <div class="field"><label>Email</label><input type="email" style="width:100%" value="${escapeAttr(state.settings.email||'')}" placeholder="tienda@email.com" onchange="state.settings.email=this.value; saveState()"></div>
+          </div>
+          <div class="field">
+            <label>Web / Redes sociales</label>
+            <input type="text" style="width:100%" value="${escapeAttr(state.settings.web||'')}" placeholder="www.mitienda.com · @mitienda" onchange="state.settings.web=this.value; saveState()">
+          </div>
+          <div class="field">
+            <label style="display:flex;align-items:center;gap:8px;text-transform:none;">
+              <input type="checkbox" ${state.settings.autoImprimir!==false?'checked':''} onchange="state.settings.autoImprimir=this.checked; saveState()" style="width:auto;">
+              Imprimir el ticket automáticamente al pulsar "Cobrar"
+            </label>
+            <div class="note" style="margin-top:8px;font-size:11.5px;">
+              La impresora y el cajón se configuran más abajo, en <b>🖨️ Impresora térmica</b>.
+              La serie del ticket se asigna sola según el mes: 26E, 26F, 26M…
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Tipo de IVA (%)</label><input type="number" step="0.5" value="${state.settings.ivaRate}" onchange="state.settings.ivaRate=parseFloat(this.value)||0; saveState(); render()"></div>
+            <div class="field"><label>Talla mínima general</label><input type="number" value="${state.settings.tallaMin}" onchange="state.settings.tallaMin=parseInt(this.value)||27; saveState(); render()"></div>
+            <div class="field"><label>Talla máxima general</label><input type="number" value="${state.settings.tallaMax}" onchange="state.settings.tallaMax=parseInt(this.value)||46; saveState(); render()"></div>
+          </div>
+          <div class="note" style="margin:4px 0 10px;font-size:11.5px;">
+            El rango general de arriba solo se usa si algún artículo no tiene segmento de cliente asignado. En zapatos normales, el número de tallas que se ofrece depende de este segmento:
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Talla mínima — Hombre/Mujer/Unisex</label><input type="number" value="${state.settings.tallaMinAdulto}" onchange="state.settings.tallaMinAdulto=parseInt(this.value)||36; saveState(); render()"></div>
+            <div class="field"><label>Talla máxima — Hombre/Mujer/Unisex</label><input type="number" value="${state.settings.tallaMaxAdulto}" onchange="state.settings.tallaMaxAdulto=parseInt(this.value)||46; saveState(); render()"></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Talla mínima — Niño/a</label><input type="number" value="${state.settings.tallaMinNino}" onchange="state.settings.tallaMinNino=parseInt(this.value)||28; saveState(); render()"></div>
+            <div class="field"><label>Talla máxima — Niño/a</label><input type="number" value="${state.settings.tallaMaxNino}" onchange="state.settings.tallaMaxNino=parseInt(this.value)||35; saveState(); render()"></div>
+          </div>
+        </div>
+      </div>
 
-      <label style="font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">Texto libre</label>
-      <div class="field" style="margin-top:6px;">
-        <label>Cabecera (arriba del todo, antes del nombre)</label>
-        <textarea rows="2" style="width:100%;padding:9px 12px;border:1.5px solid var(--line);border-radius:var(--radius-sm);font-family:var(--font-body);font-size:14px;resize:vertical;" placeholder="Ej: Bienvenido a nuestra tienda" onchange="state.settings.ticket_cabecera=this.value; saveState()">${escapeHtml(state.settings.ticket_cabecera||'')}</textarea>
-      </div>
-      <div class="field">
-        <label>Pie (abajo del todo)</label>
-        <textarea rows="2" style="width:100%;padding:9px 12px;border:1.5px solid var(--line);border-radius:var(--radius-sm);font-family:var(--font-body);font-size:14px;resize:vertical;" onchange="state.settings.ticket_pie=this.value; saveState()">${escapeHtml(state.settings.ticket_pie||'')}</textarea>
-      </div>
+      <div>
+        <h3 class="sub-title" style="margin-top:0;">Personalizar el ticket de compra</h3>
+        <div class="ticket" style="width:100%;">
+          <div class="note" style="margin-bottom:14px;">Elige qué aparece en el ticket que se entrega al cliente. Los cambios se aplican desde el siguiente ticket que imprimas.</div>
 
-      <label style="font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin-top:6px;display:block;">Datos de la tienda</label>
-      <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px;">
-        ${[
-          ['ticket_nombre','Nombre de la tienda'],
-          ['ticket_nif','NIF / CIF'],
-          ['ticket_direccion','Dirección'],
-          ['ticket_telefono','Teléfono'],
-          ['ticket_email','Email'],
-          ['ticket_web','Web / Redes sociales'],
-        ].map(([k,lbl])=>`
-          <label style="display:flex;align-items:center;gap:8px;text-transform:none;margin:0;font-size:13px;">
-            <input type="checkbox" ${state.settings[k]!==false?'checked':''} onchange="state.settings['${k}']=this.checked; saveState()" style="width:auto;">
-            ${lbl}
-          </label>`).join('')}
-      </div>
+          <label style="font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">Texto libre</label>
+          <div class="field" style="margin-top:6px;">
+            <label>Cabecera (arriba del todo, antes del nombre)</label>
+            <textarea rows="2" style="width:100%;padding:9px 12px;border:1.5px solid var(--line);border-radius:var(--radius-sm);font-family:var(--font-body);font-size:14px;resize:vertical;" placeholder="Ej: Bienvenido a nuestra tienda" onchange="state.settings.ticket_cabecera=this.value; saveState()">${escapeHtml(state.settings.ticket_cabecera||'')}</textarea>
+          </div>
+          <div class="field">
+            <label>Pie (abajo del todo)</label>
+            <textarea rows="2" style="width:100%;padding:9px 12px;border:1.5px solid var(--line);border-radius:var(--radius-sm);font-family:var(--font-body);font-size:14px;resize:vertical;" onchange="state.settings.ticket_pie=this.value; saveState()">${escapeHtml(state.settings.ticket_pie||'')}</textarea>
+          </div>
 
-      <label style="font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin-top:14px;display:block;">Información de la venta</label>
-      <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px;">
-        ${[
-          ['ticket_numero','Número de ticket'],
-          ['ticket_formaPago','Forma de pago (efectivo / tarjeta)'],
-          ['ticket_desgloseIva','Desglose de IVA (base imponible + IVA por separado)'],
-          ['ticket_descuentos','Descuentos aplicados'],
-          ['ticket_promos','Desglose de promociones por artículo'],
-        ].map(([k,lbl])=>`
-          <label style="display:flex;align-items:center;gap:8px;text-transform:none;margin:0;font-size:13px;">
-            <input type="checkbox" ${state.settings[k]!==false?'checked':''} onchange="state.settings['${k}']=this.checked; saveState()" style="width:auto;">
-            ${lbl}
-          </label>`).join('')}
-      </div>
+          <label style="font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin-top:6px;display:block;">Datos de la tienda</label>
+          <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px;">
+            ${[
+              ['ticket_nombre','Nombre de la tienda'],
+              ['ticket_nif','NIF / CIF'],
+              ['ticket_direccion','Dirección'],
+              ['ticket_telefono','Teléfono'],
+              ['ticket_email','Email'],
+              ['ticket_web','Web / Redes sociales'],
+            ].map(([k,lbl])=>`
+              <label style="display:flex;align-items:center;gap:8px;text-transform:none;margin:0;font-size:13px;">
+                <input type="checkbox" ${state.settings[k]!==false?'checked':''} onchange="state.settings['${k}']=this.checked; saveState()" style="width:auto;">
+                ${lbl}
+              </label>`).join('')}
+          </div>
 
-      <div style="margin-top:16px;">
-        <button class="btn secondary" onclick="abrirTicketImprimible(state.tickets.length?state.tickets[state.tickets.length-1].id:null, false)">👁️ Ver cómo queda el último ticket</button>
+          <label style="font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin-top:14px;display:block;">Información de la venta</label>
+          <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px;">
+            ${[
+              ['ticket_numero','Número de ticket'],
+              ['ticket_formaPago','Forma de pago (efectivo / tarjeta)'],
+              ['ticket_desgloseIva','Desglose de IVA (base imponible + IVA por separado)'],
+              ['ticket_descuentos','Descuentos aplicados'],
+              ['ticket_promos','Desglose de promociones por artículo'],
+            ].map(([k,lbl])=>`
+              <label style="display:flex;align-items:center;gap:8px;text-transform:none;margin:0;font-size:13px;">
+                <input type="checkbox" ${state.settings[k]!==false?'checked':''} onchange="state.settings['${k}']=this.checked; saveState()" style="width:auto;">
+                ${lbl}
+              </label>`).join('')}
+          </div>
+
+          <div style="margin-top:16px;">
+            <button class="btn secondary" onclick="abrirTicketImprimible(state.tickets.length?state.tickets[state.tickets.length-1].id:null, false)">👁️ Ver cómo queda el último ticket</button>
+          </div>
+        </div>
       </div>
+    </div>
 
   `;
 }
@@ -4719,6 +4771,9 @@ function borrarTodosLosDatos(){
 function confirmarBorrarTodo(){
   storage.remove(STORAGE_KEY);
   state = defaultState();
+  // Único caso en el que SÍ se permite guardar un almacén vacío por encima
+  // de la nube: el usuario lo ha pedido explícitamente aquí.
+  _borradoIntencional = true;
   saveState();
   document.getElementById("storeName").textContent = (state.settings.nombreTienda || "Mil Pasos").toUpperCase();
   closeModal();
