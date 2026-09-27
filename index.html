@@ -416,7 +416,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "12.9";
+const APP_VERSION = "12.10";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -1212,6 +1212,7 @@ let otroNombre = ""; let otroModelo = ""; let otroTalla = ""; let otroPrecio = "
 var _scrollGuardado = 0; // scroll guardado ANTES de abrir un modal, para restaurarlo después
 var ticketsSeleccionadosParaBorrar = new Set();   // ids marcados en el registro de ventas para borrado múltiple
 var devolucionesSeleccionadasParaBorrar = new Set();   // ids marcados en devoluciones/garantías para borrado múltiple
+var _planCompletarHoja = null;   // plan pendiente de confirmar al completar la última hoja de etiquetas
 let cartMetodoPago = "efectivo";
 let chartRefs = { monthly:null, top:null, brand:null };
 const PALETTE = ['#FFB020','#3ED07A','#5B8DEF','#E85D75','#B98CE0','#8A93A3','#F2A65A','#43BFB0'];
@@ -5742,24 +5743,29 @@ function etiquetasCompletarHTML(total, porHoja){
     + '<button class="btn small secondary" onclick="completarUltimaHoja()">➕ Completar la hoja</button>';
 }
 
-// Reparte las etiquetas que faltan para llegar a un múltiplo exacto de
-// "por hoja". A diferencia de la primera versión, NO rellena con copias de
-// más de lo ya seleccionado (eso casi nunca se llega a usar y es
-// desperdicio con otro nombre): primero busca, en TODA la tienda, otras
-// tallas que de verdad tengan stock sin etiqueta imprimir todavía -aunque
-// no estén en el filtro actual ni seleccionadas- y las añade a la
-// selección. Solo si no queda ninguna necesidad real en toda la tienda,
-// recurre como último recurso a repuestos de lo ya seleccionado.
+// Calcula QUÉ se añadiría para completar la última hoja, sin tocar todavía
+// la selección: primero se enseña la lista y hace falta confirmarla. El
+// orden de prioridad es: 1) misma marca Y modelo que algo ya seleccionado
+// (la misma referencia, otra talla — lo más probable que tengas a mano),
+// 2) misma marca aunque el modelo sea distinto, 3) cualquier otra talla
+// pendiente de la tienda, y solo si no queda ninguna necesidad real,
+// 4) repuestos de lo ya seleccionado, como último recurso.
 function completarUltimaHoja(){
   var fmt = formatoEtiquetaActual();
   var porHoja = fmt.cols * fmt.filas;
   var total = 0;
   Object.keys(etiquetasSeleccion).forEach(function(k){ total += etiquetasSeleccion[k]||0; });
-  var faltan = total % porHoja === 0 ? 0 : porHoja - (total % porHoja);
-  if(faltan<=0) return;
+  var faltanInicial = total % porHoja === 0 ? 0 : porHoja - (total % porHoja);
+  if(faltanInicial<=0) return;
+  var faltan = faltanInicial;
 
-  // 1) Necesidades reales en toda la tienda: cuánto le falta a cada talla
-  // por encima de lo que ya esté seleccionado para ella.
+  var marcasSel = {}, modelosSel = {};
+  Object.keys(etiquetasSeleccion).forEach(function(k){
+    if(!(etiquetasSeleccion[k]>0)) return;
+    var p = state.products.find(function(x){ return x.id===k.split('|')[0]; });
+    if(p){ marcasSel[p.marca]=true; modelosSel[p.marca+'|'+p.modelo]=true; }
+  });
+
   var candidatos = [];
   state.products.forEach(function(p){
     tallasParaTipo(p.tipoArticulo||'zapatos', p.genero).forEach(function(t){
@@ -5768,48 +5774,89 @@ function completarUltimaHoja(){
       var k = claveEtiqueta(p.id,t);
       var pendienteReal = Math.max(0, (info.stock||0) - (info.etiquetasImpresas||0));
       var margen = pendienteReal - (etiquetasSeleccion[k]||0);
-      if(margen>0) candidatos.push({k:k, margen:margen});
+      if(margen<=0) return;
+      var prioridad = modelosSel[p.marca+'|'+p.modelo] ? 0 : (marcasSel[p.marca] ? 1 : 2);
+      candidatos.push({k:k, margen:margen, prioridad:prioridad});
     });
   });
 
-  var añadidasReales = 0, vueltas = 0, i = 0;
-  while(faltan>0 && candidatos.some(function(c){ return c.margen>0; }) && vueltas < candidatos.length*50){
-    var c = candidatos[i % candidatos.length];
-    if(c.margen>0){
-      etiquetasSeleccion[c.k] = (etiquetasSeleccion[c.k]||0) + 1;
-      c.margen--; faltan--; añadidasReales++;
+  var plan = {};
+  [0,1,2].forEach(function(nivel){
+    if(faltan<=0) return;
+    var lista = candidatos.filter(function(c){ return c.prioridad===nivel; });
+    var i = 0, vueltas = 0;
+    while(faltan>0 && lista.some(function(c){ return c.margen>0; }) && vueltas < lista.length*50){
+      var c = lista[i % lista.length];
+      if(c.margen>0){ c.margen--; faltan--; plan[c.k]=(plan[c.k]||0)+1; }
+      i++; vueltas++;
     }
-    i++; vueltas++;
-  }
+  });
 
-  // 2) Si no queda ninguna necesidad real, se completa con repuestos de lo
-  // ya seleccionado (respetando el filtro activo), como último recurso.
-  var añadidasRepuesto = 0;
+  var esRepuesto = false;
   if(faltan>0){
     var claves = Object.keys(etiquetasSeleccion).filter(function(k){
       return (etiquetasSeleccion[k]||0) > 0 && _claveCoincideConFiltro(k);
     });
     if(claves.length){
+      esRepuesto = true;
       for(var j=0; j<faltan; j++){
         var k2 = claves[j % claves.length];
-        etiquetasSeleccion[k2] = (etiquetasSeleccion[k2]||0) + 1;
-        añadidasRepuesto++;
+        plan[k2] = (plan[k2]||0) + 1;
       }
       faltan = 0;
     }
   }
 
-  renderEtiquetasModalPreservandoScroll();
-
-  if(!añadidasReales && !añadidasRepuesto){
+  if(!Object.keys(plan).length){
     showToast('Selecciona primero alguna etiqueta para poder completar la hoja.', 'err', false);
-  } else if(añadidasReales && añadidasRepuesto){
-    showToast(añadidasReales+' de otras tallas pendientes + '+añadidasRepuesto+' de repuesto añadidas ✓', 'ok');
-  } else if(añadidasReales){
-    showToast(añadidasReales+' etiqueta(s) de otras tallas pendientes en la tienda añadidas ✓', 'ok');
-  } else {
-    showToast(añadidasRepuesto+' de repuesto añadidas (no quedaba ninguna necesidad real en la tienda) ✓', 'ok');
+    return;
   }
+
+  _planCompletarHoja = plan;
+  mostrarPreviaCompletarHoja(plan, esRepuesto);
+}
+
+// Enseña la lista exacta de lo que se añadiría, con botones para confirmar
+// o cancelar, sin tocar todavía la selección real.
+function mostrarPreviaCompletarHoja(plan, esRepuesto){
+  var wrap = document.getElementById('etiq-completar-wrap');
+  if(!wrap) return;
+  var total = 0;
+  var lineas = Object.keys(plan).map(function(k){
+    var partes = k.split('|');
+    var p = state.products.find(function(x){ return x.id===partes[0]; });
+    var n = plan[k];
+    total += n;
+    return '<div style="display:flex;justify-content:space-between;font-size:12.5px;padding:2px 0;">'
+      + '<span>'+escapeHtml(p? p.marca+' '+p.modelo : '?')+' — talla '+escapeHtml(partes[1])+'</span>'
+      + '<b>+'+n+'</b></div>';
+  }).join('');
+
+  wrap.style.textAlign = 'left';
+  wrap.innerHTML =
+    '<div style="background:var(--canvas);border-radius:var(--radius-sm);padding:10px;">'
+    + '<div style="font-size:12px;font-weight:700;margin-bottom:6px;">Esto es lo que se añadiría ('+total+' etiqueta'+(total===1?'':'s')+'):</div>'
+    + '<div style="max-height:140px;overflow-y:auto;">'+lineas+'</div>'
+    + (esRepuesto ? '<div class="note" style="margin-top:8px;font-size:11.5px;">No quedaba ninguna necesidad real en la tienda: alguna de estas son de repuesto.</div>' : '')
+    + '<div style="margin-top:10px;display:flex;gap:8px;">'
+    +   '<button class="btn small secondary" onclick="cancelarCompletarHoja()">Cancelar</button>'
+    +   '<button class="btn small accent" onclick="confirmarCompletarHoja()">✓ Añadir estas '+total+'</button>'
+    + '</div>'
+    + '</div>';
+}
+
+function confirmarCompletarHoja(){
+  if(!_planCompletarHoja) return;
+  Object.keys(_planCompletarHoja).forEach(function(k){
+    etiquetasSeleccion[k] = (etiquetasSeleccion[k]||0) + _planCompletarHoja[k];
+  });
+  _planCompletarHoja = null;
+  renderEtiquetasModalPreservandoScroll();
+}
+
+function cancelarCompletarHoja(){
+  _planCompletarHoja = null;
+  renderEtiquetasModalPreservandoScroll();
 }
 
 // Ambas funciones respetan el filtro de marca/modelo activo: si hay uno
