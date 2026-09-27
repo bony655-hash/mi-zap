@@ -416,7 +416,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "12.7";
+const APP_VERSION = "12.9";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -5669,6 +5669,7 @@ function renderEtiquetasModal(){
         <div class="price-row" style="justify-content:flex-end;">
           <span>Total: <b id="etiq-total">${totalEtiq}</b> etiqueta(s) · <b id="etiq-hojas">${Math.ceil(totalEtiq/(fmt.cols*fmt.filas))}</b> hoja(s) · ${fmt.cols*fmt.filas} por hoja</span>
         </div>
+        <div id="etiq-completar-wrap" style="text-align:right;margin-top:4px;">${etiquetasCompletarHTML(totalEtiq, fmt.cols*fmt.filas)}</div>
         <div class="modal-actions">
           <button class="btn secondary" onclick="closeModal()">Cancelar</button>
           <button class="btn accent" onclick="imprimirHojaEtiquetas()">🖨️ Imprimir hoja</button>
@@ -5723,8 +5724,92 @@ function actualizarTotalEtiquetas(){
   var porHoja = fmt.cols * fmt.filas;
   var elT = document.getElementById("etiq-total");
   var elH = document.getElementById("etiq-hojas");
+  var elC = document.getElementById("etiq-completar-wrap");
   if(elT) elT.textContent = total;
   if(elH) elH.textContent = Math.ceil(total/porHoja);
+  if(elC) elC.innerHTML = etiquetasCompletarHTML(total, porHoja);
+}
+
+// Texto y botón para no desperdiciar huecos en blanco en la última hoja:
+// si el total no es múltiplo exacto de lo que cabe por hoja, ofrece
+// completarla añadiendo unas pocas etiquetas de más (de repuesto) a lo que
+// ya esté seleccionado, en vez de dejar posiciones en blanco en el papel.
+function etiquetasCompletarHTML(total, porHoja){
+  if(total<=0) return '';
+  var faltan = total % porHoja === 0 ? 0 : porHoja - (total % porHoja);
+  if(faltan<=0) return '<span style="font-size:12px;color:var(--teal);">✓ La última hoja sale completa, sin huecos.</span>';
+  return '<span style="font-size:12px;color:var(--ink-dim);">Faltan <b>'+faltan+'</b> para no dejar huecos en la última hoja — </span>'
+    + '<button class="btn small secondary" onclick="completarUltimaHoja()">➕ Completar la hoja</button>';
+}
+
+// Reparte las etiquetas que faltan para llegar a un múltiplo exacto de
+// "por hoja". A diferencia de la primera versión, NO rellena con copias de
+// más de lo ya seleccionado (eso casi nunca se llega a usar y es
+// desperdicio con otro nombre): primero busca, en TODA la tienda, otras
+// tallas que de verdad tengan stock sin etiqueta imprimir todavía -aunque
+// no estén en el filtro actual ni seleccionadas- y las añade a la
+// selección. Solo si no queda ninguna necesidad real en toda la tienda,
+// recurre como último recurso a repuestos de lo ya seleccionado.
+function completarUltimaHoja(){
+  var fmt = formatoEtiquetaActual();
+  var porHoja = fmt.cols * fmt.filas;
+  var total = 0;
+  Object.keys(etiquetasSeleccion).forEach(function(k){ total += etiquetasSeleccion[k]||0; });
+  var faltan = total % porHoja === 0 ? 0 : porHoja - (total % porHoja);
+  if(faltan<=0) return;
+
+  // 1) Necesidades reales en toda la tienda: cuánto le falta a cada talla
+  // por encima de lo que ya esté seleccionado para ella.
+  var candidatos = [];
+  state.products.forEach(function(p){
+    tallasParaTipo(p.tipoArticulo||'zapatos', p.genero).forEach(function(t){
+      var info = tallaInfo(p,t);
+      if(!info.barcode) return;
+      var k = claveEtiqueta(p.id,t);
+      var pendienteReal = Math.max(0, (info.stock||0) - (info.etiquetasImpresas||0));
+      var margen = pendienteReal - (etiquetasSeleccion[k]||0);
+      if(margen>0) candidatos.push({k:k, margen:margen});
+    });
+  });
+
+  var añadidasReales = 0, vueltas = 0, i = 0;
+  while(faltan>0 && candidatos.some(function(c){ return c.margen>0; }) && vueltas < candidatos.length*50){
+    var c = candidatos[i % candidatos.length];
+    if(c.margen>0){
+      etiquetasSeleccion[c.k] = (etiquetasSeleccion[c.k]||0) + 1;
+      c.margen--; faltan--; añadidasReales++;
+    }
+    i++; vueltas++;
+  }
+
+  // 2) Si no queda ninguna necesidad real, se completa con repuestos de lo
+  // ya seleccionado (respetando el filtro activo), como último recurso.
+  var añadidasRepuesto = 0;
+  if(faltan>0){
+    var claves = Object.keys(etiquetasSeleccion).filter(function(k){
+      return (etiquetasSeleccion[k]||0) > 0 && _claveCoincideConFiltro(k);
+    });
+    if(claves.length){
+      for(var j=0; j<faltan; j++){
+        var k2 = claves[j % claves.length];
+        etiquetasSeleccion[k2] = (etiquetasSeleccion[k2]||0) + 1;
+        añadidasRepuesto++;
+      }
+      faltan = 0;
+    }
+  }
+
+  renderEtiquetasModalPreservandoScroll();
+
+  if(!añadidasReales && !añadidasRepuesto){
+    showToast('Selecciona primero alguna etiqueta para poder completar la hoja.', 'err', false);
+  } else if(añadidasReales && añadidasRepuesto){
+    showToast(añadidasReales+' de otras tallas pendientes + '+añadidasRepuesto+' de repuesto añadidas ✓', 'ok');
+  } else if(añadidasReales){
+    showToast(añadidasReales+' etiqueta(s) de otras tallas pendientes en la tienda añadidas ✓', 'ok');
+  } else {
+    showToast(añadidasRepuesto+' de repuesto añadidas (no quedaba ninguna necesidad real en la tienda) ✓', 'ok');
+  }
 }
 
 // Ambas funciones respetan el filtro de marca/modelo activo: si hay uno
