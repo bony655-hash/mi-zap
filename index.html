@@ -416,7 +416,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "12.5";
+const APP_VERSION = "12.7";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -2653,7 +2653,11 @@ function regenerarCodigosDuplicados(){
       var p = state.products.find(function(x){ return x.id===u.productId; });
       if(!p || !p.tallas || !p.tallas[u.talla]) return;
       var nuevo = generarEAN13();
-      if(nuevo){ p.tallas[u.talla].barcode = nuevo; p._mod = Date.now(); cambiados++; }
+      if(nuevo){
+        p.tallas[u.talla].barcode = nuevo;
+        p.tallas[u.talla].etiquetasImpresas = 0;   // el código cambió: las que hubiera impresas ya no sirven
+        p._mod = Date.now(); cambiados++;
+      }
     });
   });
 
@@ -5504,14 +5508,34 @@ function openEtiquetasModal(){
 
 // Cambia el filtro de marca/modelo sin perder las cantidades ya tecleadas
 // (etiquetasSeleccion no se toca: solo cambia qué filas se muestran).
+// Igual que renderPreservandoScrollDe, pero para el modal de etiquetas: aquí
+// hay DOS scrolls que conservar a la vez, el de la propia ventana modal (que
+// se desplaza si el contenido es más alto que la pantalla) y el de la tabla
+// de tallas. Sin esto, cualquier botón de dentro del modal -cambiar de
+// formato, "una de cada", los filtros...- repintaba el modal entero y lo
+// devolvía de golpe arriba del todo.
+function renderEtiquetasModalPreservandoScroll(){
+  var overlay = document.querySelector('#modal-root .modal-overlay');
+  var tabla = document.getElementById('etiquetas-tabla-scroll');
+  var scrollOverlay = overlay ? overlay.scrollTop : 0;
+  var scrollTabla = tabla ? tabla.scrollTop : 0;
+  renderEtiquetasModal();
+  setTimeout(function(){
+    var overlay2 = document.querySelector('#modal-root .modal-overlay');
+    var tabla2 = document.getElementById('etiquetas-tabla-scroll');
+    if(overlay2) overlay2.scrollTop = scrollOverlay;
+    if(tabla2) tabla2.scrollTop = scrollTabla;
+  }, 0);
+}
+
 function filtrarEtiquetasPorMarca(marca){
   etiquetasFiltroMarca = marca;
   etiquetasFiltroModelo = '';   // el modelo elegido puede no pertenecer a la nueva marca
-  renderEtiquetasModal();
+  renderEtiquetasModalPreservandoScroll();
 }
 function filtrarEtiquetasPorModelo(modelo){
   etiquetasFiltroModelo = modelo;
-  renderEtiquetasModal();
+  renderEtiquetasModalPreservandoScroll();
 }
 
 function renderEtiquetasModal(){
@@ -5553,16 +5577,20 @@ function renderEtiquetasModal(){
       var i = tallaInfo(p,t); return i.barcode;
     });
     if(!tallas.length) return;
-    filas += '<tr style="background:var(--canvas);"><td colspan="4" style="font-weight:700;">'
+    filas += '<tr style="background:var(--canvas);"><td colspan="5" style="font-weight:700;">'
            + escapeHtml(p.marca)+' — '+escapeHtml(p.modelo)+'</td></tr>';
     tallas.forEach(function(t){
       var info = tallaInfo(p,t);
       var k = claveEtiqueta(p.id,t);
       var n = etiquetasSeleccion[k]||0;
+      var impresas = info.etiquetasImpresas||0;
       filas += '<tr>'
         + '<td style="padding-left:22px;">Talla '+t+'</td>'
         + '<td style="font-family:var(--font-mono);font-size:11.5px;">'+escapeHtml(info.barcode)+'</td>'
         + '<td class="num">'+info.stock+' uds</td>'
+        + '<td class="num"><input type="number" min="0" max="9999" value="'+impresas+'" style="width:64px;color:var(--ink-dim);" '
+        + 'title="Cuántas etiquetas de esta talla ya se han impreso antes. Corrígelo a mano si no coincide con la realidad." '
+        + 'onchange="ajustarEtiquetasImpresas(\''+p.id+'\',\''+t+'\',this.value); actualizarTotalEtiquetas();"></td>'
         + '<td class="num"><input type="number" min="0" max="200" value="'+n+'" style="width:70px;" '
         + 'onchange="etiquetasSeleccion[\''+k+'\']=parseInt(this.value)||0; actualizarTotalEtiquetas();"></td>'
         + '</tr>';
@@ -5570,9 +5598,9 @@ function renderEtiquetasModal(){
   });
 
   if(!productosConCodigo.length){
-    filas = '<tr><td colspan="4" style="text-align:center;color:var(--ink-dim);">Ningún artículo tiene código de barras todavía. Genera los códigos desde la ficha del producto.</td></tr>';
+    filas = '<tr><td colspan="5" style="text-align:center;color:var(--ink-dim);">Ningún artículo tiene código de barras todavía. Genera los códigos desde la ficha del producto.</td></tr>';
   } else if(!filas){
-    filas = '<tr><td colspan="4" style="text-align:center;color:var(--ink-dim);">Ningún artículo coincide con el filtro elegido.</td></tr>';
+    filas = '<tr><td colspan="5" style="text-align:center;color:var(--ink-dim);">Ningún artículo coincide con el filtro elegido.</td></tr>';
   }
 
   document.getElementById("modal-root").innerHTML = `
@@ -5584,7 +5612,7 @@ function renderEtiquetasModal(){
         </div>
         <div class="field">
           <label>Formato de etiqueta</label>
-          <select style="width:100%" onchange="state.settings.etiqFormato=this.value; saveState(); renderEtiquetasModal();">
+          <select style="width:100%" onchange="state.settings.etiqFormato=this.value; saveState(); renderEtiquetasModalPreservandoScroll();">
             ${FORMATOS_ETIQUETA.map(f=>`<option value="${f.id}" ${fmt.id===f.id?'selected':''}>${f.nombre} · ${f.cols*f.filas}/hoja</option>`).join('')}
           </select>
         </div>
@@ -5632,9 +5660,9 @@ function renderEtiquetasModal(){
             </select>
           </div>
         </div>
-        <div style="max-height:340px;overflow:auto;border-radius:var(--radius-sm);box-shadow:var(--shadow);">
+        <div id="etiquetas-tabla-scroll" style="max-height:340px;overflow:auto;border-radius:var(--radius-sm);box-shadow:var(--shadow);">
           <table style="box-shadow:none;border-radius:0;">
-            <thead style="position:sticky;top:0;z-index:2;"><tr><th>Artículo / talla</th><th>Código</th><th class="num">Stock</th><th class="num">Etiquetas</th></tr></thead>
+            <thead style="position:sticky;top:0;z-index:2;"><tr><th>Artículo / talla</th><th>Código</th><th class="num">Stock</th><th class="num">Ya impresas</th><th class="num">Etiquetas</th></tr></thead>
             <tbody>${filas}</tbody>
           </table>
         </div>
@@ -5712,13 +5740,29 @@ function _claveCoincideConFiltro(k){
 }
 
 function etiquetasPorStock(){
+  // Solo propone las que de verdad faltan: el stock actual menos las que ya
+  // se imprimieron antes para esa misma talla. Así, repetir esto cada
+  // semana no vuelve a pedir etiquetas de algo que ya está pegado.
   Object.keys(etiquetasSeleccion).forEach(function(k){
     if(!_claveCoincideConFiltro(k)) return;
     var partes = k.split('|');
     var p = state.products.find(function(x){ return x.id===partes[0]; });
-    if(p) etiquetasSeleccion[k] = tallaInfo(p,partes[1]).stock||0;
+    if(!p) return;
+    var info = tallaInfo(p,partes[1]);
+    etiquetasSeleccion[k] = Math.max(0, (info.stock||0) - (info.etiquetasImpresas||0));
   });
-  renderEtiquetasModal();
+  renderEtiquetasModalPreservandoScroll();
+}
+
+// Corrige a mano el número de "ya impresas" de una talla: por defecto la
+// app lo lleva sola, pero puede no coincidir con la realidad (un atasco de
+// impresora, o la primera vez que se usa esto con stock que ya llevaba
+// etiqueta de antes).
+function ajustarEtiquetasImpresas(productId, talla, valor){
+  var p = state.products.find(function(x){ return x.id===productId; });
+  if(!p || !p.tallas[talla]) return;
+  p.tallas[talla].etiquetasImpresas = Math.max(0, parseInt(valor)||0);
+  saveState();
 }
 
 function etiquetasFijas(n){
@@ -5726,11 +5770,12 @@ function etiquetasFijas(n){
     if(!_claveCoincideConFiltro(k)) return;
     etiquetasSeleccion[k] = n;
   });
-  renderEtiquetasModal();
+  renderEtiquetasModalPreservandoScroll();
 }
 
 function imprimirHojaEtiquetas(){
   var etiquetas = [];
+  var impresasPorTalla = [];   // para sumar al contador tras imprimir de verdad
   Object.keys(etiquetasSeleccion).forEach(function(k){
     var n = etiquetasSeleccion[k]||0;
     if(n<=0) return;
@@ -5741,9 +5786,19 @@ function imprimirHojaEtiquetas(){
     var info = tallaInfo(p,talla);
     if(!info.barcode) return;
     for(var i=0;i<n;i++) etiquetas.push({p:p, talla:talla, code:info.barcode});
+    impresasPorTalla.push({p:p, talla:talla, n:n});
   });
 
   if(!etiquetas.length){ showToast("Indica al menos una etiqueta.", "err", false); return; }
+
+  // Se suma al contador de "ya impresas" de cada talla lo que se acaba de
+  // mandar a imprimir, para que la próxima vez la app sepa que esto ya no
+  // hace falta reimprimirlo.
+  impresasPorTalla.forEach(function(x){
+    if(!x.p.tallas[x.talla]) return;
+    x.p.tallas[x.talla].etiquetasImpresas = (x.p.tallas[x.talla].etiquetasImpresas||0) + x.n;
+  });
+  saveState();
 
   var fmt = formatoEtiquetaActual();
   var porHoja = fmt.cols * fmt.filas;
@@ -6066,6 +6121,22 @@ function saveProduct(id){
       }
     });
     if(autoGen) setTimeout(()=>showToast(autoGen+" código(s) EAN-13 generado(s) automáticamente ✓","ok"), 400);
+  }
+
+  // Si la talla ya existía con el mismo código de barras, se conserva el
+  // contador de "etiquetas ya impresas". Si el código ha cambiado (o es
+  // nuevo), se queda a 0: las etiquetas impresas antes llevan el código
+  // viejo y ya no sirven para esta talla.
+  if(id){
+    const pAntes = state.products.find(x=>x.id===id);
+    if(pAntes && pAntes.tallas){
+      Object.keys(tallas).forEach(t=>{
+        const antigua = pAntes.tallas[t];
+        if(antigua && antigua.barcode && antigua.barcode===tallas[t].barcode){
+          tallas[t].etiquetasImpresas = antigua.etiquetasImpresas||0;
+        }
+      });
+    }
   }
 
   if(id){
