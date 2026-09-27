@@ -416,7 +416,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "12.10";
+const APP_VERSION = "12.14";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -2051,8 +2051,7 @@ function renderAlmacen(){
       <div class="scan-label">Recepción rápida — escanea el código de la caja para sumar stock</div>
       <div class="scan-row">
         <span class="scan-cursor">▌</span>
-        <input id="scan-almacen" class="scan-input" type="text" placeholder="Esperando código de barras..." autocomplete="off"
-          onkeydown="if(event.key==='Enter'){handleScanAlmacen(this.value); this.value='';}">
+        <input id="scan-almacen" class="scan-input" type="text" placeholder="Esperando código de barras..." autocomplete="off">
       </div>
     </div>
     <div class="toolbar">
@@ -4543,6 +4542,7 @@ function confirmarEliminarTicketsSeleccionados(){
         const info = tallaInfo(p, s.talla);
         if(!p.tallas[s.talla]) p.tallas[s.talla] = {stock:0, barcode:""};
         p.tallas[s.talla].stock = (info.stock||0) + s.cantidad;
+        p._mod = Date.now();
       }
     });
     state.sales = state.sales.filter(s=>s.ticketId!==ticketId);
@@ -4614,6 +4614,7 @@ function _deshacerReponerStock(d){
   var info = tallaInfo(p, d.talla);
   if(!p.tallas[d.talla]) return;
   p.tallas[d.talla].stock = Math.max(0, (info.stock||0) - d.cantidad);
+  p._mod = Date.now();
 }
 
 function eliminarDevolucion(devId){
@@ -4725,6 +4726,7 @@ function confirmarEliminarTicket(ticketId){
       const info = tallaInfo(p, s.talla);
       if(!p.tallas[s.talla]) p.tallas[s.talla] = {stock:0, barcode:""};
       p.tallas[s.talla].stock = (info.stock||0) + s.cantidad;
+      p._mod = Date.now();   // si no, la fusión con otro dispositivo descarta la reposición
     }
   });
   // Borrar ventas, devoluciones y ticket
@@ -5647,6 +5649,10 @@ function renderEtiquetasModal(){
           <button class="btn small secondary" onclick="etiquetasFijas(1)">Una de cada${etiquetasFiltroMarca?' (solo '+escapeHtml(etiquetasFiltroModelo||etiquetasFiltroMarca)+')':''}</button>
           <button class="btn small secondary" onclick="etiquetasFijas(0)">Poner todo a cero${etiquetasFiltroMarca?' (solo '+escapeHtml(etiquetasFiltroModelo||etiquetasFiltroMarca)+')':''}</button>
         </div>
+        <div class="toolbar" style="margin-top:6px;">
+          <button class="btn small secondary" onclick="confirmarMarcarTodoComoImpreso()" title="Fija el contador de 'Ya impresas' de cada talla al mismo número que su stock actual, como punto de partida">📋 Ya llevan etiqueta (= stock actual)${etiquetasFiltroMarca?' (solo '+escapeHtml(etiquetasFiltroModelo||etiquetasFiltroMarca)+')':''}</button>
+        </div>
+        <div id="etiq-marcar-impreso-wrap"></div>
         <div class="field-row">
           <div class="field"><label>Buscar por marca</label>
             <select onchange="filtrarEtiquetasPorMarca(this.value)">
@@ -5871,6 +5877,54 @@ function _claveCoincideConFiltro(k){
       && (!etiquetasFiltroModelo || p.modelo===etiquetasFiltroModelo);
 }
 
+// Fija el punto de partida real: todo lo que hay en stock ahora mismo ya
+// lleva su etiqueta puesta. Es distinto de "Una por unidad en stock", que
+// decide qué imprimir AHORA -esto no imprime nada, solo pone al día el
+// contador de "ya impresas" para que a partir de aquí solo cuente lo que
+// cambie de verdad (mercancía nueva, devoluciones, etc.).
+// La confirmación se muestra DENTRO del propio modal de Etiquetas (igual
+// que la previsualización de "completar la hoja"): abrir aquí un modal
+// nuevo sustituiría el modal de Etiquetas entero, en vez de aparecer
+// encima de él.
+function confirmarMarcarTodoComoImpreso(){
+  var wrap = document.getElementById('etiq-marcar-impreso-wrap');
+  if(!wrap) return;
+  var alcance = etiquetasFiltroMarca
+    ? (etiquetasFiltroModelo || etiquetasFiltroMarca)
+    : 'toda la tienda';
+  wrap.innerHTML =
+    '<div style="background:var(--canvas);border-radius:var(--radius-sm);padding:10px;margin-top:6px;">'
+    + '<div style="font-size:12.5px;">Esto pone <b>"Ya impresas"</b> = stock actual de cada talla, en <b>'+escapeHtml(alcance)+'</b>. No imprime nada, y <b style="color:var(--red);">sobrescribe</b> cualquier conteo que ya hubiera ahí.</div>'
+    + '<div style="margin-top:8px;display:flex;gap:8px;">'
+    +   '<button class="btn small secondary" onclick="cancelarMarcarTodoComoImpreso()">Cancelar</button>'
+    +   '<button class="btn small accent" onclick="marcarTodoComoImpreso()">✓ Sí, fijar el punto de partida</button>'
+    + '</div></div>';
+}
+
+function cancelarMarcarTodoComoImpreso(){
+  var wrap = document.getElementById('etiq-marcar-impreso-wrap');
+  if(wrap) wrap.innerHTML = '';
+}
+
+function marcarTodoComoImpreso(){
+  var n = 0;
+  state.products.forEach(function(p){
+    tallasParaTipo(p.tipoArticulo||'zapatos', p.genero).forEach(function(t){
+      var info = tallaInfo(p,t);
+      if(!info.barcode) return;
+      var k = claveEtiqueta(p.id,t);
+      if(!_claveCoincideConFiltro(k)) return;
+      if(!p.tallas[t]) return;
+      p.tallas[t].etiquetasImpresas = info.stock||0;
+      p._mod = Date.now();
+      n++;
+    });
+  });
+  saveState();
+  renderEtiquetasModalPreservandoScroll();
+  showToast(n+' talla(s) puestas al día: "ya impresas" = stock actual ✓', 'ok');
+}
+
 function etiquetasPorStock(){
   // Solo propone las que de verdad faltan: el stock actual menos las que ya
   // se imprimieron antes para esa misma talla. Así, repetir esto cada
@@ -5894,6 +5948,7 @@ function ajustarEtiquetasImpresas(productId, talla, valor){
   var p = state.products.find(function(x){ return x.id===productId; });
   if(!p || !p.tallas[talla]) return;
   p.tallas[talla].etiquetasImpresas = Math.max(0, parseInt(valor)||0);
+  p._mod = Date.now();
   saveState();
 }
 
@@ -5929,6 +5984,7 @@ function imprimirHojaEtiquetas(){
   impresasPorTalla.forEach(function(x){
     if(!x.p.tallas[x.talla]) return;
     x.p.tallas[x.talla].etiquetasImpresas = (x.p.tallas[x.talla].etiquetasImpresas||0) + x.n;
+    x.p._mod = Date.now();   // si no se marca como modificado, la fusión con otro dispositivo descarta este cambio
   });
   saveState();
 
@@ -6408,7 +6464,9 @@ function assignBarcodeExisting(code){
   if(!productId){ alert("Selecciona un producto."); return; }
   const p = state.products.find(x=>x.id===productId);
   const info = tallaInfo(p, talla);
-  p.tallas[talla] = { stock:(info.stock||0)+cantidad, barcode:code };
+  const impresasAntes = (p.tallas[talla] && p.tallas[talla].etiquetasImpresas) || 0;
+  p.tallas[talla] = { stock:(info.stock||0)+cantidad, barcode:code, etiquetasImpresas: impresasAntes };
+  p._mod = Date.now();
   saveState();
   closeModal();
   render();
@@ -6939,6 +6997,7 @@ async function registerDevolucion(sale, cantidad, motivo, reponerStock){
       const info = tallaInfo(p, sale.talla);
       if(!p.tallas[sale.talla]) p.tallas[sale.talla] = {stock:0, barcode:""};
       p.tallas[sale.talla].stock = (info.stock||0) + cantidad;
+      p._mod = Date.now();
     }
   }
 
@@ -7204,23 +7263,26 @@ document.addEventListener('focusout', function(e){
 // tecleando es la velocidad — un lector encadena los caracteres en unos
 // pocos milisegundos, mucho más rápido de lo que nadie escribe a mano —,
 // así que en vez de exigir el foco en un campo concreto, se detecta el
-// escaneo por esa velocidad, esté el foco donde esté.
+// escaneo por esa velocidad, esté el foco donde esté. Funciona igual en
+// Ventas (añade al carrito) y en Almacén (suma stock recibido).
 (function(){
   var buffer = '';
   var ultimaTecla = 0;
   var UMBRAL_MS = 60;     // más separado que esto, no es un lector
   var MIN_LARGO = 5;      // ningún código de barras real es más corto
+  var CAMPO_POR_PESTAÑA = { ventas: 'scan-ventas', almacen: 'scan-almacen' };
 
   document.addEventListener('keydown', function(e){
-    if(currentTab !== 'ventas') { buffer = ''; return; }
+    var campoPropio = CAMPO_POR_PESTAÑA[currentTab];
+    if(!campoPropio) { buffer = ''; return; }   // en Informes/Ajustes no hay nada que escanear
 
     // Si el foco está en otro campo de texto que no sea el propio cuadro
-    // de escaneo, se respeta lo que el usuario esté tecleando a mano ahí
-    // (el nombre de un artículo manual, una cantidad...) y no se procesa
-    // como código de barras.
+    // de escaneo de esta pestaña, se respeta lo que el usuario esté
+    // tecleando a mano ahí (el nombre de un artículo manual, una
+    // cantidad...) y no se procesa como código de barras.
     var activo = document.activeElement;
     var esOtroCampo = activo && (activo.tagName === 'INPUT' || activo.tagName === 'TEXTAREA' || activo.tagName === 'SELECT')
-      && activo.id !== 'scan-ventas';
+      && activo.id !== campoPropio;
     if(esOtroCampo){ buffer = ''; return; }
 
     var ahora = Date.now();
@@ -7228,17 +7290,30 @@ document.addEventListener('focusout', function(e){
     ultimaTecla = ahora;
 
     if(e.key === 'Enter'){
+      // Se bloquea que el navegador interprete también este Intro por su
+      // cuenta: sin esto, además de leerlo nosotros, seguía su curso normal
+      // y en algún punto de la secuencia de un escaneo acababa activando un
+      // botón de pestaña o abriendo un selector de fecha, según con qué
+      // elemento coincidiera en ese momento.
+      e.preventDefault();
+      e.stopPropagation();
       if(buffer.length >= MIN_LARGO){
-        handleScanVenta(buffer);
-        var campo = document.getElementById('scan-ventas');
+        if(currentTab==='ventas') handleScanVenta(buffer);
+        else handleScanAlmacen(buffer);
+        var campo = document.getElementById(campoPropio);
         if(campo) campo.value = '';
       }
       buffer = '';
       return;
     }
-    // Solo un carácter imprimible por pulsación (letras, números...);
-    // se ignoran teclas de control (Shift, Tab, flechas...)
-    if(e.key.length === 1) buffer += e.key;
+    // Solo se procesa (y se bloquea) un carácter imprimible por pulsación;
+    // teclas de control (Tab, Escape, flechas...) se dejan pasar tal cual,
+    // por si hicieran falta para otra cosa.
+    if(e.key.length === 1){
+      e.preventDefault();
+      e.stopPropagation();
+      buffer += e.key;
+    }
   });
 })();
 
