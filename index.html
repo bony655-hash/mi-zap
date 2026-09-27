@@ -416,7 +416,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "12.3";
+const APP_VERSION = "12.4";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -5350,7 +5350,7 @@ function dibujarCodigo(code, anchoMm, altoMm){
 
 // ---- Formatos de hoja de etiquetas ----
 var FORMATOS_ETIQUETA = [
-  {id:'apli01787', nombre:'Apli 01787 / Avery L7159 — 70 × 37 mm', cols:3, filas:8, ancho:70,   alto:37,   margenSup:12.5, margenIzq:0},
+  {id:'apli01787', nombre:'Apli 01787 / Avery L7159 — 70 × 37 mm', cols:3, filas:8, ancho:70,   alto:37,   margenSup:0,    margenIzq:0},
   {id:'avery3475', nombre:'Avery 3475 — 70 × 42,3 mm',              cols:3, filas:7, ancho:70,   alto:42.3, margenSup:0,    margenIzq:0},
   {id:'apli01771', nombre:'Apli 01771 — 63,5 × 38,1 mm',            cols:3, filas:7, ancho:63.5, alto:38.1, margenSup:15,   margenIzq:7.2},
   {id:'apli01277', nombre:'Apli 01277 — 105 × 37 mm',               cols:2, filas:8, ancho:105,  alto:37,   margenSup:0,    margenIzq:0},
