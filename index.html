@@ -424,7 +424,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "12.26";
+const APP_VERSION = "12.27";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -1987,13 +1987,14 @@ function buscarEnAlmacen(valor){
 // provocar parpadeo.
 function actualizarRejillaAlmacen(){
   var rejilla = document.querySelector('#tab-almacen .grid-cards, #view .grid-cards');
-    if(!rejilla){ render(); return; }
+  if(!rejilla){ _tabsSucias['almacen']=true; render(); return; }
   if(rejilla.contains(document.activeElement)) document.body.focus();
   var nueva = document.createElement('div');
   nueva.innerHTML = tarjetasAlmacen();
   rejilla.parentNode.replaceChild(nueva.firstChild, rejilla);
   var cont = document.getElementById('almacen-contador');
   if(cont) cont.textContent = productosFiltrados().length + ' artículo(s)';
+  _cacheTab['almacen'] = null;
 }
 
 // Filtrado y pintado de tarjetas, separados para poder refrescar solo la
@@ -2327,16 +2328,28 @@ function calcularHistorialVentas(){
 // historial de ventas. Elimina el parpadeo al escanear, añadir, quitar o
 // cambiar cantidades durante el cobro.
 function actualizarCarrito(){
+  var htmlFresco = renderVentas();
+  _cacheTab['ventas'] = htmlFresco;
+  _tabsSucias['ventas'] = false;
+
   var wrap = document.getElementById('ventas-carrito-wrap');
-  if(!wrap){ render(); return; }
-  // Mover el foco al body antes de sustituir el DOM: si un elemento dentro
-  // del bloque tenía el foco y lo pierde al desaparecer, Android busca el
-  // siguiente elemento enfocable y puede abrir el teclado táctil.
+  if(!wrap){
+    // No hay wrap aún (carrito vacío en pantalla): reemplazar el panel entero
+    var panel = document.querySelector('.tab-panel');
+    if(panel && panel.id === 'tab-ventas'){
+      panel.innerHTML = htmlFresco;
+    }
+    return;
+  }
   if(wrap.contains(document.activeElement)) document.body.focus();
   var tmp = document.createElement('div');
-  tmp.innerHTML = renderVentas();
+  tmp.innerHTML = htmlFresco;
   var nuevoWrap = tmp.querySelector('#ventas-carrito-wrap');
-  if(!nuevoWrap){ render(); return; }
+  if(!nuevoWrap){
+    var panel2 = document.querySelector('.tab-panel');
+    if(panel2 && panel2.id === 'tab-ventas') panel2.innerHTML = htmlFresco;
+    return;
+  }
   wrap.parentNode.replaceChild(nuevoWrap, wrap);
 }
 
@@ -6612,7 +6625,7 @@ function handleScanVenta(code){
   if(info.stock - usado <= 0){ showToast(`Sin stock disponible: ${match.product.marca} ${match.product.modelo} talla ${match.talla}`, "err"); return; }
   if(inCart) inCart.cantidad += 1;
   else cart.push({ productId:match.product.id, talla:match.talla, cantidad:1, descuento:{activo:false,tipo:'porcentaje',valor:0} });
-  render();
+  actualizarCarrito();
   showToast(`+ ${match.product.marca} ${match.product.modelo} talla ${match.talla}`, "ok");
 }
 
