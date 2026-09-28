@@ -95,8 +95,7 @@
   .tabs button:hover:not(.active){color:var(--ink);background:#fff;}
 
   main.receipt-area{background:var(--canvas);color:var(--ink);padding:22px clamp(10px,2.2vw,32px) 60px;min-height:70vh;transition:opacity .10s ease;}
-  .tab-panel{display:none;}
-  .tab-panel.tab-activa{display:block;}
+  .tab-panel{display:block;}
 
   h2.section-title{
     font-family:var(--font-display);font-size:23px;font-weight:800;letter-spacing:-.3px;color:var(--ink);
@@ -416,9 +415,6 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
   </header>
   <main id="view" class="receipt-area">
     <div id="tab-almacen" class="tab-panel"></div>
-    <div id="tab-ventas"  class="tab-panel"></div>
-    <div id="tab-informes" class="tab-panel"></div>
-    <div id="tab-ajustes" class="tab-panel"></div>
   </main>
 </div>
 <div id="modal-root"></div>
@@ -428,7 +424,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "12.24";
+const APP_VERSION = "12.26";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -1161,6 +1157,7 @@ function iniciarEscuchaFirebase(){
       // Guardar en localStorage (copia local con fotos)
       storage.set(STORAGE_KEY, JSON.stringify(state));
       document.getElementById("storeName").textContent = (state.settings.nombreTienda||"Mil Pasos").toUpperCase();
+      marcarTabsSucias();
       render();
       // Solo avisar si llegaron ventas nuevas de otro dispositivo
       if(state.sales.length > nVentasAntes){
@@ -1429,6 +1426,9 @@ function saveState(){
   // Guardar en Firebase (sin fotos, para sincronizar entre dispositivos)
   guardarEnFirebase();
   guardarAjustesLocales();
+  // Marcar todas las pestañas como sucias para que se re-rendericen
+  // la próxima vez que se visiten, reflejando los datos nuevos.
+  marcarTabsSucias();
 }
 
 function startOfWeek(d){
@@ -1861,60 +1861,76 @@ function renderPreservandoScrollDe(idContenedor){
   }, 0);
 }
 
-// Mapa de pestaña → id del panel y función de render
+// Mapa de pestaña → función de render
 var _TABS = {
-  almacen:  { panel: 'tab-almacen',  fn: function(){ return renderAlmacen(); } },
-  ventas:   { panel: 'tab-ventas',   fn: function(){ return renderVentas();  } },
-  informes: { panel: 'tab-informes', fn: function(){ return renderInformes();} },
-  ajustes:  { panel: 'tab-ajustes',  fn: function(){ return renderAjustes(); } },
+  almacen:  { fn: function(){ return renderAlmacen(); } },
+  ventas:   { fn: function(){ return renderVentas();  } },
+  informes: { fn: function(){ return renderInformes();} },
+  ajustes:  { fn: function(){ return renderAjustes(); } },
 };
+// Caché de HTML por pestaña. Solo se regenera cuando los datos cambian.
+// Esto permite cambiar de pestaña al instante (se usa el HTML ya calculado)
+// sin tener 4 pestañas enteras en el DOM a la vez (solo está la activa).
+var _cacheTab = {};
+// Pestañas que necesitan re-renderizarse porque los datos han cambiado.
+var _tabsSucias = { almacen: true, ventas: true, informes: true, ajustes: true };
+
+function marcarTabsSucias(){
+  Object.keys(_tabsSucias).forEach(function(t){ _tabsSucias[t] = true; });
+  // Vaciar la caché para que se recalcule al visitar cada pestaña
+  _cacheTab = {};
+}
 
 function render(){
   document.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("active", b.dataset.tab===currentTab));
 
-  const tabChanged = currentTab !== lastRenderedTab;
+  var tabChanged = currentTab !== lastRenderedTab;
 
   if(tabChanged && lastRenderedTab && _scrollPorPestana.hasOwnProperty(lastRenderedTab)){
     try{ _scrollPorPestana[lastRenderedTab] = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0; }catch(e){}
-    // Ocultar pestaña anterior sin perder su scroll interno
-    var panelAnterior = document.getElementById('tab-'+lastRenderedTab);
-    if(panelAnterior) panelAnterior.classList.remove('tab-activa');
   }
 
   lastRenderedTab = currentTab;
 
   var cfg = _TABS[currentTab];
   if(!cfg) return;
-  var panel = document.getElementById(cfg.panel);
+  var panel = document.querySelector('.tab-panel');  // único panel reutilizable
   if(!panel) return;
+  panel.id = 'tab-' + currentTab;  // renombrar para que los selectores por id sigan funcionando
 
-  // Guardar el elemento enfocado y su selección para restaurarlos tras el render
   var active = document.activeElement;
-  var activeId = active && active.id ? active.id : null;
+  var activeId = (!tabChanged && active && active.id) ? active.id : null;
   var activeSelStart = (active && typeof active.selectionStart==='number') ? active.selectionStart : null;
   var activeSelEnd   = (active && typeof active.selectionEnd==='number')   ? active.selectionEnd   : null;
 
-  try{ panel.innerHTML = cfg.fn(); }
-  catch(errRender){
-    console.error(errRender);
-    panel.innerHTML = '<div class="ticket" style="max-width:520px;margin:40px auto;text-align:center;">'
-      + '<div style="font-size:36px;">⚠️</div><h3>No se pudo mostrar esta pestaña</h3>'
-      + '<p style="font-size:13px;color:var(--ink-dim);word-break:break-word;">'+escapeHtml(String((errRender&&errRender.message)||errRender))+'</p>'
-      + '<button class="btn accent" onclick="currentTab=\'almacen\'; render();">Ir al Almacén</button> '
-      + '<button class="btn secondary" onclick="location.reload()">🔄 Recargar</button></div>';
+  // Usar caché si la pestaña está limpia; recalcular si está sucia
+  if(_tabsSucias[currentTab] || !_cacheTab[currentTab]){
+    try{
+      _cacheTab[currentTab] = cfg.fn();
+    }catch(errRender){
+      console.error(errRender);
+      _cacheTab[currentTab] = '<div class="ticket" style="max-width:520px;margin:40px auto;text-align:center;">'
+        + '<div style="font-size:36px;">⚠️</div><h3>No se pudo mostrar esta pestaña</h3>'
+        + '<p style="font-size:13px;color:var(--ink-dim);word-break:break-word;">'+escapeHtml(String((errRender&&errRender.message)||errRender))+'</p>'
+        + '<button class="btn accent" onclick="currentTab=\'almacen\'; render();">Ir al Almacén</button> '
+        + '<button class="btn secondary" onclick="location.reload()">🔄 Recargar</button></div>';
+    }
+    _tabsSucias[currentTab] = false;
   }
 
-  panel.classList.add('tab-activa');
+  panel.innerHTML = _cacheTab[currentTab];
+
+  // Restaurar el scroll de forma síncrona, antes de que el navegador pinte,
+  // para que no haya ni un frame en que se vea la posición incorrecta.
+  if(tabChanged){
+    var sc = _scrollPorPestana[currentTab] || 0;
+    try{ window.scrollTo(0, sc); }catch(e){}
+    try{ document.documentElement.scrollTop = sc; }catch(e){}
+    try{ document.body.scrollTop = sc; }catch(e){}
+  }
 
   setTimeout(function(){
     if(tabChanged){
-      // Restaurar scroll de la pestaña a la que se vuelve
-      var sc = _scrollPorPestana[currentTab] || 0;
-      try{ window.scrollTo(0, sc); }catch(e){}
-      try{ document.documentElement.scrollTop = sc; }catch(e){}
-      try{ document.body.scrollTop = sc; }catch(e){}
-
-      // En PC, enfocar el escáner automáticamente
       var esTactil = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
       if(!esTactil){
         var s = document.getElementById(currentTab==='almacen'?'scan-almacen':'scan-ventas');
@@ -1922,7 +1938,6 @@ function render(){
       }
       if(currentTab==='informes') initCharts();
     } else {
-      // Re-render dentro de la misma pestaña: restaurar foco y cursor
       if(activeId){
         var el = document.getElementById(activeId);
         if(el){
@@ -1971,7 +1986,7 @@ function buscarEnAlmacen(valor){
 // cambiar los filtros de género/categoría/marca, para no perder el foco ni
 // provocar parpadeo.
 function actualizarRejillaAlmacen(){
-  var rejilla = document.querySelector('#tab-almacen .grid-cards');
+  var rejilla = document.querySelector('#tab-almacen .grid-cards, #view .grid-cards');
     if(!rejilla){ render(); return; }
   if(rejilla.contains(document.activeElement)) document.body.focus();
   var nueva = document.createElement('div');
