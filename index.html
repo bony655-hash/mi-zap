@@ -424,7 +424,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "12.27";
+const APP_VERSION = "12.28";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -2668,7 +2668,7 @@ function renderVentas(){
     <table style="box-shadow:none;border-radius:0;font-size:14.5px;">
       <thead style="position:sticky;top:0;z-index:2;"><tr>
         <th style="width:36px;"><input type="checkbox" ${state.devoluciones.length && state.devoluciones.every(d=>devolucionesSeleccionadasParaBorrar.has(d.id))?'checked':''} onchange="toggleTodasDevolucionesSeleccionadas(this.checked)" title="Seleccionar todas"></th>
-        <th>Nº</th><th>Fecha</th><th>Marca</th><th>Modelo</th><th class="num">Talla</th><th class="num">Cant.</th><th>Motivo</th><th class="num">Importe</th><th>Repuesto en stock</th><th></th>
+        <th>Nº</th><th>Fecha</th><th>Marca</th><th>Modelo</th><th class="num">Talla</th><th class="num">Cant.</th><th>Motivo</th><th class="num">Importe</th><th>Repuesto en stock</th><th>Ticket origen</th><th></th>
       </tr></thead>
       <tbody>
         ${[...state.devoluciones].sort((a,b)=>b.fecha.localeCompare(a.fecha)).map(d=>`
@@ -2683,6 +2683,7 @@ function renderVentas(){
             <td>${d.motivo==='garantia'?'Garantía':'Devolución'}</td>
             <td class="num">${eur(d.importe)}</td>
             <td>${d.reponerStock?'Sí':'No'}</td>
+            <td style="font-size:12.5px;color:var(--ink-dim);">${(function(){ var t=state.tickets.find(function(x){return x.id===d.ticketId;}); return t?'<span style="font-family:var(--font-mono);color:var(--ink);">'+escapeHtml(t.numSerieFactura)+'</span>':'<span style="color:var(--red);">no encontrado</span>'; })()}</td>
             <td><button class="btn small danger" onclick="eliminarDevolucion('${d.id}')">🗑️</button></td>
           </tr>
         `).join("")}
@@ -5184,10 +5185,11 @@ function exportLedgerCSV(){
 }
 
 function exportDevolucionesCSV(){
-  const header = "numero,fecha,marca,modelo,talla,cantidad,motivo,importe,repuesto_stock" + String.fromCharCode(10);
-  const rows = state.devoluciones.map(d=>
-    [ d.numSerie, d.fecha, d.marca, d.modelo, d.talla, d.cantidad, d.motivo, d.importe.toFixed(2), d.reponerStock?"si":"no" ].join(",")
-  ).join(String.fromCharCode(10));
+  const header = "numero,fecha,marca,modelo,talla,cantidad,motivo,importe,repuesto_stock,ticket_origen" + String.fromCharCode(10);
+  const rows = state.devoluciones.map(d=>{
+    var t = state.tickets.find(function(x){ return x.id===d.ticketId; });
+    return [ d.numSerie, d.fecha, d.marca, d.modelo, d.talla, d.cantidad, d.motivo, d.importe.toFixed(2), d.reponerStock?"si":"no", t?t.numSerieFactura:'' ].join(",");
+  }).join(String.fromCharCode(10));
   const blob = new Blob([header+rows], {type:"text/csv"});
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
