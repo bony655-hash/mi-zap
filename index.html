@@ -94,7 +94,7 @@
   .tabs button.active{color:var(--marca-menta);background:var(--marca-negro);}
   .tabs button:hover:not(.active){color:var(--ink);background:#fff;}
 
-  main.receipt-area{background:var(--canvas);color:var(--ink);padding:22px clamp(10px,2.2vw,32px) 60px;min-height:70vh;}
+  main.receipt-area{background:var(--canvas);color:var(--ink);padding:22px clamp(10px,2.2vw,32px) 60px;min-height:70vh;transition:opacity .10s ease;}
 
   h2.section-title{
     font-family:var(--font-display);font-size:23px;font-weight:800;letter-spacing:-.3px;color:var(--ink);
@@ -219,11 +219,16 @@
   .r-promo{font-size:10.5px;color:#444;}
   .r-promo s{color:#999;}
 
+  /* Antes esta regla ocultaba TODA la página al imprimir y solo quedaba el
+     fondo verde oscuro. En el Kozen, si la impresión iba por el diálogo de
+     Android, Fully Kiosk se quedaba en ese modo y la pantalla aparecía vacía.
+     Los tickets ya se imprimen en un marco aparte, así que la regla solo
+     actúa si se activa expresamente la clase imprimiendo-pagina (nunca). */
   @media print{
-    body *{visibility:hidden;}
-    #receipt-printable, #receipt-printable *{visibility:visible;}
-    #receipt-printable{position:absolute;left:0;top:0;width:80mm;}
-    .no-print{display:none !important;}
+    body.imprimiendo-pagina *{visibility:hidden;}
+    body.imprimiendo-pagina #receipt-printable, body.imprimiendo-pagina #receipt-printable *{visibility:visible;}
+    body.imprimiendo-pagina #receipt-printable{position:absolute;left:0;top:0;width:80mm;}
+    body.imprimiendo-pagina .no-print{display:none !important;}
   }
 
   .price-row{display:flex;gap:14px;font-family:var(--font-mono);font-size:12.5px;margin:10px 0;color:var(--ink-dim);flex-wrap:wrap;}
@@ -416,7 +421,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "12.14";
+const APP_VERSION = "12.22";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -1798,6 +1803,8 @@ function borrarHistorialAvisos(){
 
 // ---------------- RENDER ----------------
 let lastRenderedTab = null;
+// Guarda el scroll de cada pestaña para restaurarlo al volver a ella
+var _scrollPorPestana = { almacen: 0, ventas: 0, informes: 0, ajustes: 0 };
 
 function renderSinScroll(){
   // Para los checkboxes de modelos en Informes: actualizar solo el DOM sin re-render completo
@@ -1857,22 +1864,50 @@ function render(){
   const activeSelEnd = (active && typeof active.selectionEnd === 'number') ? active.selectionEnd : null;
 
   const tabChanged = currentTab !== lastRenderedTab;
+
+  // Guardar scroll de la pestaña que se va a abandonar antes de borrar el DOM
+  if(tabChanged && lastRenderedTab && _scrollPorPestana.hasOwnProperty(lastRenderedTab)){
+    try{
+      _scrollPorPestana[lastRenderedTab] =
+        window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+    }catch(e){}
+  }
+
   lastRenderedTab = currentTab;
 
   const view = document.getElementById("view");
-  if(currentTab==="almacen") view.innerHTML = renderAlmacen();
-  else if(currentTab==="ventas") view.innerHTML = renderVentas();
-  else if(currentTab==="ajustes") view.innerHTML = renderAjustes();
-  else view.innerHTML = renderInformes();
+  try{
+    if(currentTab==="almacen") view.innerHTML = renderAlmacen();
+    else if(currentTab==="ventas") view.innerHTML = renderVentas();
+    else if(currentTab==="ajustes") view.innerHTML = renderAjustes();
+    else view.innerHTML = renderInformes();
+  }catch(errRender){
+    console.error(errRender);
+    view.innerHTML = '<div class="ticket" style="max-width:520px;margin:40px auto;text-align:center;">'
+      + '<div style="font-size:36px;">⚠️</div>'
+      + '<h3>No se pudo mostrar esta pestaña</h3>'
+      + '<p style="font-size:13px;color:var(--ink-dim);word-break:break-word;">' + escapeHtml(String((errRender && errRender.message) || errRender)) + '</p>'
+      + '<button class="btn accent" onclick="currentTab=\'almacen\'; render();">Ir al Almacén</button> '
+      + '<button class="btn secondary" onclick="location.reload()">🔄 Recargar</button>'
+      + '</div>';
+  }
 
   setTimeout(()=>{
-    // Solo enfocar el escáner automáticamente en PC (no en táctil, para no abrir el teclado)
-    var esTactil = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
-    if(tabChanged && !esTactil){
-      if(currentTab==="almacen"){
-        const s = document.getElementById("scan-almacen"); if(s) s.focus();
-      } else if(currentTab==="ventas"){
-        const s = document.getElementById("scan-ventas"); if(s) s.focus();
+    if(tabChanged){
+      // Restaurar el scroll de la pestaña a la que se vuelve
+      var scrollDestino = _scrollPorPestana[currentTab] || 0;
+      try{ window.scrollTo(0, scrollDestino); }catch(e){}
+      try{ document.documentElement.scrollTop = scrollDestino; }catch(e){}
+      try{ document.body.scrollTop = scrollDestino; }catch(e){}
+
+      // Solo enfocar el escáner automáticamente en PC (no en táctil, para no abrir el teclado)
+      var esTactil = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+      if(!esTactil){
+        if(currentTab==="almacen"){
+          const s = document.getElementById("scan-almacen"); if(s) s.focus();
+        } else if(currentTab==="ventas"){
+          const s = document.getElementById("scan-ventas"); if(s) s.focus();
+        }
       }
     } else if(!tabChanged && activeId){
       // Re-render dentro de la misma pestaña (p. ej. escribiendo en un buscador): devolver el foco y el cursor
@@ -1913,13 +1948,22 @@ function buscarEnAlmacen(valor){
   filterText = valor;
   clearTimeout(_temporizadorBusqueda);
   _temporizadorBusqueda = setTimeout(function(){
-    var rejilla = document.querySelector('#view .grid-cards');
-    if(!rejilla){ render(); return; }
-    rejilla.outerHTML = tarjetasAlmacen();
-    // Actualizar el contador de resultados si está visible
-    var cont = document.getElementById('almacen-contador');
-    if(cont) cont.textContent = productosFiltrados().length + ' artículo(s)';
+    actualizarRejillaAlmacen();
   }, 120);
+}
+
+// Actualiza solo la rejilla de tarjetas y el contador sin tocar la barra
+// de búsqueda, los filtros ni el scroll. Se usa tanto al buscar como al
+// cambiar los filtros de género/categoría/marca, para no perder el foco ni
+// provocar parpadeo.
+function actualizarRejillaAlmacen(){
+  var rejilla = document.querySelector('#view .grid-cards');
+  if(!rejilla){ render(); return; }
+  var nueva = document.createElement('div');
+  nueva.innerHTML = tarjetasAlmacen();
+  rejilla.parentNode.replaceChild(nueva.firstChild, rejilla);
+  var cont = document.getElementById('almacen-contador');
+  if(cont) cont.textContent = productosFiltrados().length + ' artículo(s)';
 }
 
 // Filtrado y pintado de tarjetas, separados para poder refrescar solo la
@@ -2056,14 +2100,14 @@ function renderAlmacen(){
     </div>
     <div class="toolbar">
       <input id="almacen-search" type="text" placeholder="Buscar por marca o modelo..." value="${escapeAttr(filterText)}" oninput="buscarEnAlmacen(this.value)" style="min-width:240px;">
-      <select onchange="almacenGeneroFiltro=this.value; render();">
+      <select onchange="almacenGeneroFiltro=this.value; actualizarRejillaAlmacen();">
         <option value="todos" ${almacenGeneroFiltro==='todos'?'selected':''}>Todos los segmentos</option>
         <option value="mujer" ${almacenGeneroFiltro==='mujer'?'selected':''}>Mujer</option>
         <option value="hombre" ${almacenGeneroFiltro==='hombre'?'selected':''}>Hombre</option>
         <option value="unisex" ${almacenGeneroFiltro==='unisex'?'selected':''}>Unisex</option>
         <option value="nino" ${almacenGeneroFiltro==='nino'?'selected':''}>Niño/a</option>
       </select>
-      <select onchange="almacenCategoriaFiltro=this.value; render();">
+      <select onchange="almacenCategoriaFiltro=this.value; actualizarRejillaAlmacen();">
         <option value="todas" ${almacenCategoriaFiltro==='todas'?'selected':''}>Todas las categorías — ${state.products.length} artículo(s)</option>
         ${categoriasDelAlmacen().map(function(c){
           return `<option value="${escapeAttr(c.valor)}" ${almacenCategoriaFiltro===c.valor?'selected':''}>${escapeHtml(c.etiqueta)} (${c.n})</option>`;
@@ -2248,6 +2292,22 @@ function calcularHistorialVentas(){
     return {filtered, filteredTotal, filteredBeneficio, rowsHist};
 }
 
+// Actualiza solo el bloque del carrito (tabla + totales + descuento global)
+// sin tocar el buscador de catálogo, el formulario de artículo libre, ni el
+// historial de ventas. Elimina el parpadeo al escanear, añadir, quitar o
+// cambiar cantidades durante el cobro.
+function actualizarCarrito(){
+  var wrap = document.getElementById('ventas-carrito-wrap');
+  if(!wrap){ render(); return; }
+  // renderVentas() genera todo el HTML; nosotros solo extraemos el bloque
+  // del carrito del HTML resultante y lo sustituimos en el DOM.
+  var tmp = document.createElement('div');
+  tmp.innerHTML = renderVentas();
+  var nuevoWrap = tmp.querySelector('#ventas-carrito-wrap');
+  if(!nuevoWrap){ render(); return; }
+  wrap.parentNode.replaceChild(nuevoWrap, wrap);
+}
+
 function renderVentas(){
   const totals = cartTotals();
   const rowsCart = cart.map((line,i)=>{
@@ -2375,7 +2435,6 @@ function renderVentas(){
     </table>
     </div>
   ` : `<div class="cart-empty">El carrito está vacío. Escanea un producto para añadirlo.</div>`;
-
   const _histCalc = calcularHistorialVentas();
   const filtered = _histCalc.filtered;
   const filteredTotal = _histCalc.filteredTotal;
@@ -2436,20 +2495,20 @@ function renderVentas(){
     </div>
     `}
 
-    <div class="ticket" style="margin-bottom:10px;">
+    <div class="ticket" style="margin-bottom:10px;" id="ventas-carrito-wrap">
       ${cartTable}
       ${cart.length? `
       <div class="field-row" style="align-items:center;margin-top:14px;border-top:1px dashed var(--receipt-line);padding-top:12px;">
         <label style="display:flex;align-items:center;gap:8px;text-transform:none;margin:0;">
-          <input type="checkbox" ${cartDescuentoActivo?'checked':''} onchange="cartDescuentoActivo=this.checked; render();" style="width:auto;">
+          <input type="checkbox" ${cartDescuentoActivo?'checked':''} onchange="cartDescuentoActivo=this.checked; actualizarCarrito();" style="width:auto;">
           Descuento sobre <b>toda la factura</b> (cliente habitual, etc.)
         </label>
         ${cartDescuentoActivo? `
-          <select onchange="cartDescuentoTipo=this.value; render();">
+          <select onchange="cartDescuentoTipo=this.value; actualizarCarrito();">
             <option value="porcentaje" ${cartDescuentoTipo==='porcentaje'?'selected':''}>Porcentaje (%)</option>
             <option value="importe" ${cartDescuentoTipo==='importe'?'selected':''}>Importe fijo (€)</option>
           </select>
-          <input type="number" step="0.01" min="0" value="${cartDescuentoValor}" style="width:90px" onchange="cartDescuentoValor=parseFloat(this.value)||0; render();" placeholder="Valor">
+          <input type="number" step="0.01" min="0" value="${cartDescuentoValor}" style="width:90px" onchange="cartDescuentoValor=parseFloat(this.value)||0; actualizarCarrito();" placeholder="Valor">
         ` : ""}
       </div>
       <div class="price-row" style="justify-content:flex-end;gap:22px;margin-top:12px;font-size:14.5px;">
@@ -2477,7 +2536,7 @@ function renderVentas(){
             <option value="tarjeta" ${cartMetodoPago==='tarjeta'?'selected':''}>Tarjeta</option>
           </select>
         </label>
-        <button class="btn secondary" onclick="cart=[]; cartDescuentoActivo=false; cartDescuentoValor=0; render();">🗑️ Vaciar carrito</button>
+        <button class="btn secondary" onclick="cart=[]; cartDescuentoActivo=false; cartDescuentoValor=0; actualizarCarrito();">🗑️ Vaciar carrito</button>
         <button class="btn accent" onclick="checkout()">💳 Cobrar</button>
       </div>` : ""}
     </div>
@@ -4075,6 +4134,13 @@ function _rawbtPorFully(b64){
 }
 
 function enviarARawBT(datos, etiqueta){
+  // RawBT solo existe en Android. En un PC o Mac, intentar navegar a una
+  // URL rawbt: o a un intent de Android deja la página en blanco porque el
+  // navegador intenta abrirla y no hay nada que la intercepte.
+  if(!/Android/i.test(navigator.userAgent || '')){
+    showToast('⚠️ RawBT solo funciona en Android. En este equipo no se puede imprimir por la impresora térmica.', 'err', true);
+    return false;
+  }
   var b64 = _rawbtBase64(datos);
   if(!b64) return false;
 
@@ -4366,13 +4432,21 @@ function abrirTicketImprimible(ticketId, autoImprimir){
           </div>
           ${state.settings.escposActivo === true
             ? `<div style="font-size:11px;color:var(--ink-dim);text-align:center;">Impresora térmica activa en este equipo</div>`
-            : `<div style="font-size:11px;color:var(--red);text-align:center;">⚠️ Impresora térmica desactivada en este equipo — Informes → 🖨️ Impresora térmica</div>`}
+            : `<div style="font-size:11px;color:var(--red);text-align:center;">⚠️ Impresora térmica desactivada en este equipo — Ajustes → 🖨️ Impresora térmica</div>`}
         </div>
       </div>
     </div>
   `;
   setTimeout(()=>{
     if(autoImprimir){
+      if(state.settings.escposActivo !== true){
+        // Sin la impresora térmica activa, el diálogo de impresión del
+        // navegador se abre a pantalla completa y tapa toda la app: en el
+        // Kozen deja la pantalla vacía y en el PC la pantalla desaparece.
+        // Se muestra el ticket en pantalla pero NO se lanza la impresión
+        // automática: el usuario puede imprimirlo manualmente si quiere.
+        return;
+      }
       // Pequeño margen para que el QR termine de dibujarse antes de capturarlo como imagen
       setTimeout(()=>imprimirTicket(), 150);
     }
@@ -6565,7 +6639,7 @@ function addManualToCart(productId){
   const inCart = cart.find(l=>l.productId===p.id && l.talla===tallaConStock);
   if(inCart) inCart.cantidad += 1;
   else cart.push({ productId:p.id, talla:tallaConStock, cantidad:1, descuento:{activo:false,tipo:'porcentaje',valor:0} });
-  render();
+  actualizarCarrito();
 }
 
 function updateCartTalla(i, nuevaTalla){
@@ -6581,7 +6655,7 @@ function updateCartTalla(i, nuevaTalla){
     line.talla = nuevaTalla;
     line.cantidad = Math.max(1, Math.min(line.cantidad, Math.max(info.stock,1)));
   }
-  render();
+  actualizarCarrito();
 }
 
 function updateCartQty(i, value){
@@ -6589,10 +6663,10 @@ function updateCartQty(i, value){
   const info = tallaInfo(p, cart[i].talla);
   const max = info.stock + cart[i].cantidad;
   cart[i].cantidad = Math.max(1, Math.min(parseInt(value)||1, max));
-  render();
+  actualizarCarrito();
 }
 
-function removeFromCart(i){ cart.splice(i,1); render(); }
+function removeFromCart(i){ cart.splice(i,1); actualizarCarrito(); }
 
 function sortHistoryBy(campo){
   // Si ya estamos ordenando por este campo, invertir la dirección
@@ -6605,10 +6679,10 @@ function sortHistoryBy(campo){
 function toggleDescuentoLinea(i){
   if(!cart[i].descuento) cart[i].descuento={activo:false,tipo:'porcentaje',valor:0};
   cart[i].descuento.activo = !cart[i].descuento.activo;
-  render();
+  actualizarCarrito();
 }
-function setDescuentoLineaTipo(i, tipo){ if(cart[i].descuento) cart[i].descuento.tipo=tipo; render(); }
-function setDescuentoLineaValor(i, valor){ if(cart[i].descuento) cart[i].descuento.valor=parseFloat(valor)||0; render(); }
+function setDescuentoLineaTipo(i, tipo){ if(cart[i].descuento) cart[i].descuento.tipo=tipo; actualizarCarrito(); }
+function setDescuentoLineaValor(i, valor){ if(cart[i].descuento) cart[i].descuento.valor=parseFloat(valor)||0; actualizarCarrito(); }
 
 
 // Calcula las líneas de venta aplicando primero la promoción propia del producto (si tiene)
@@ -7214,7 +7288,14 @@ function comprobarVersionPublicada(){
 }
 
 document.querySelectorAll(".tabs button").forEach(btn=>{
-  btn.addEventListener("click", ()=>{ currentTab = btn.dataset.tab; render(); });
+  btn.addEventListener("click", ()=>{
+    if(btn.dataset.tab === currentTab) return;   // ya estamos aquí, no hacer nada
+    const view = document.getElementById("view");
+    if(view) view.style.opacity = "0";
+    currentTab = btn.dataset.tab;
+    render();
+    if(view) view.style.opacity = "";
+  });
 });
 
 // Arrancar Firebase y luego cargar el estado
@@ -7289,12 +7370,16 @@ document.addEventListener('focusout', function(e){
     if(ahora - ultimaTecla > UMBRAL_MS) buffer = '';   // demasiado lento: empieza de cero
     ultimaTecla = ahora;
 
-    if(e.key === 'Enter'){
-      // Se bloquea que el navegador interprete también este Intro por su
-      // cuenta: sin esto, además de leerlo nosotros, seguía su curso normal
+    if(e.key === 'Enter' || e.key === 'Tab'){
+      // Se bloquea que el navegador interprete también esta tecla por su
+      // cuenta: sin esto, además de leerla nosotros, seguía su curso normal
       // y en algún punto de la secuencia de un escaneo acababa activando un
       // botón de pestaña o abriendo un selector de fecha, según con qué
-      // elemento coincidiera en ese momento.
+      // elemento coincidiera en ese momento. Muchos lectores de código de
+      // barras están configurados para terminar el escaneo con Tab además
+      // de con Intro (o en vez de), así que se tratan igual: sin bloquear
+      // el Tab, cada escaneo iba moviendo el foco un elemento más lejos en
+      // la página, hasta acabar sobre un botón o un campo de fecha.
       e.preventDefault();
       e.stopPropagation();
       if(buffer.length >= MIN_LARGO){
@@ -7307,8 +7392,8 @@ document.addEventListener('focusout', function(e){
       return;
     }
     // Solo se procesa (y se bloquea) un carácter imprimible por pulsación;
-    // teclas de control (Tab, Escape, flechas...) se dejan pasar tal cual,
-    // por si hicieran falta para otra cosa.
+    // el resto de teclas de control (Escape, flechas...) se dejan pasar
+    // tal cual, por si hicieran falta para otra cosa.
     if(e.key.length === 1){
       e.preventDefault();
       e.stopPropagation();
