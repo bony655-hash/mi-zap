@@ -95,6 +95,8 @@
   .tabs button:hover:not(.active){color:var(--ink);background:#fff;}
 
   main.receipt-area{background:var(--canvas);color:var(--ink);padding:22px clamp(10px,2.2vw,32px) 60px;min-height:70vh;transition:opacity .10s ease;}
+  .tab-panel{display:none;}
+  .tab-panel.tab-activa{display:block;}
 
   h2.section-title{
     font-family:var(--font-display);font-size:23px;font-weight:800;letter-spacing:-.3px;color:var(--ink);
@@ -412,7 +414,12 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
       </nav>
     </div>
   </header>
-  <main id="view" class="receipt-area"></main>
+  <main id="view" class="receipt-area">
+    <div id="tab-almacen" class="tab-panel"></div>
+    <div id="tab-ventas"  class="tab-panel"></div>
+    <div id="tab-informes" class="tab-panel"></div>
+    <div id="tab-ajustes" class="tab-panel"></div>
+  </main>
 </div>
 <div id="modal-root"></div>
 <div id="toast-stack"></div>
@@ -421,7 +428,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "12.22";
+const APP_VERSION = "12.24";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -1854,72 +1861,79 @@ function renderPreservandoScrollDe(idContenedor){
   }, 0);
 }
 
-function render(){
-  document.querySelectorAll(".tabs button").forEach(b=> b.classList.toggle("active", b.dataset.tab===currentTab));
+// Mapa de pestaña → id del panel y función de render
+var _TABS = {
+  almacen:  { panel: 'tab-almacen',  fn: function(){ return renderAlmacen(); } },
+  ventas:   { panel: 'tab-ventas',   fn: function(){ return renderVentas();  } },
+  informes: { panel: 'tab-informes', fn: function(){ return renderInformes();} },
+  ajustes:  { panel: 'tab-ajustes',  fn: function(){ return renderAjustes(); } },
+};
 
-  // Recordar qué campo tenía el foco (y la posición del cursor) para no interrumpir al usuario mientras escribe
-  const active = document.activeElement;
-  const activeId = active && active.id ? active.id : null;
-  const activeSelStart = (active && typeof active.selectionStart === 'number') ? active.selectionStart : null;
-  const activeSelEnd = (active && typeof active.selectionEnd === 'number') ? active.selectionEnd : null;
+function render(){
+  document.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("active", b.dataset.tab===currentTab));
 
   const tabChanged = currentTab !== lastRenderedTab;
 
-  // Guardar scroll de la pestaña que se va a abandonar antes de borrar el DOM
   if(tabChanged && lastRenderedTab && _scrollPorPestana.hasOwnProperty(lastRenderedTab)){
-    try{
-      _scrollPorPestana[lastRenderedTab] =
-        window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
-    }catch(e){}
+    try{ _scrollPorPestana[lastRenderedTab] = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0; }catch(e){}
+    // Ocultar pestaña anterior sin perder su scroll interno
+    var panelAnterior = document.getElementById('tab-'+lastRenderedTab);
+    if(panelAnterior) panelAnterior.classList.remove('tab-activa');
   }
 
   lastRenderedTab = currentTab;
 
-  const view = document.getElementById("view");
-  try{
-    if(currentTab==="almacen") view.innerHTML = renderAlmacen();
-    else if(currentTab==="ventas") view.innerHTML = renderVentas();
-    else if(currentTab==="ajustes") view.innerHTML = renderAjustes();
-    else view.innerHTML = renderInformes();
-  }catch(errRender){
+  var cfg = _TABS[currentTab];
+  if(!cfg) return;
+  var panel = document.getElementById(cfg.panel);
+  if(!panel) return;
+
+  // Guardar el elemento enfocado y su selección para restaurarlos tras el render
+  var active = document.activeElement;
+  var activeId = active && active.id ? active.id : null;
+  var activeSelStart = (active && typeof active.selectionStart==='number') ? active.selectionStart : null;
+  var activeSelEnd   = (active && typeof active.selectionEnd==='number')   ? active.selectionEnd   : null;
+
+  try{ panel.innerHTML = cfg.fn(); }
+  catch(errRender){
     console.error(errRender);
-    view.innerHTML = '<div class="ticket" style="max-width:520px;margin:40px auto;text-align:center;">'
-      + '<div style="font-size:36px;">⚠️</div>'
-      + '<h3>No se pudo mostrar esta pestaña</h3>'
-      + '<p style="font-size:13px;color:var(--ink-dim);word-break:break-word;">' + escapeHtml(String((errRender && errRender.message) || errRender)) + '</p>'
+    panel.innerHTML = '<div class="ticket" style="max-width:520px;margin:40px auto;text-align:center;">'
+      + '<div style="font-size:36px;">⚠️</div><h3>No se pudo mostrar esta pestaña</h3>'
+      + '<p style="font-size:13px;color:var(--ink-dim);word-break:break-word;">'+escapeHtml(String((errRender&&errRender.message)||errRender))+'</p>'
       + '<button class="btn accent" onclick="currentTab=\'almacen\'; render();">Ir al Almacén</button> '
-      + '<button class="btn secondary" onclick="location.reload()">🔄 Recargar</button>'
-      + '</div>';
+      + '<button class="btn secondary" onclick="location.reload()">🔄 Recargar</button></div>';
   }
 
-  setTimeout(()=>{
-    if(tabChanged){
-      // Restaurar el scroll de la pestaña a la que se vuelve
-      var scrollDestino = _scrollPorPestana[currentTab] || 0;
-      try{ window.scrollTo(0, scrollDestino); }catch(e){}
-      try{ document.documentElement.scrollTop = scrollDestino; }catch(e){}
-      try{ document.body.scrollTop = scrollDestino; }catch(e){}
+  panel.classList.add('tab-activa');
 
-      // Solo enfocar el escáner automáticamente en PC (no en táctil, para no abrir el teclado)
+  setTimeout(function(){
+    if(tabChanged){
+      // Restaurar scroll de la pestaña a la que se vuelve
+      var sc = _scrollPorPestana[currentTab] || 0;
+      try{ window.scrollTo(0, sc); }catch(e){}
+      try{ document.documentElement.scrollTop = sc; }catch(e){}
+      try{ document.body.scrollTop = sc; }catch(e){}
+
+      // En PC, enfocar el escáner automáticamente
       var esTactil = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
       if(!esTactil){
-        if(currentTab==="almacen"){
-          const s = document.getElementById("scan-almacen"); if(s) s.focus();
-        } else if(currentTab==="ventas"){
-          const s = document.getElementById("scan-ventas"); if(s) s.focus();
+        var s = document.getElementById(currentTab==='almacen'?'scan-almacen':'scan-ventas');
+        if(s && (currentTab==='almacen'||currentTab==='ventas')) s.focus();
+      }
+      if(currentTab==='informes') initCharts();
+    } else {
+      // Re-render dentro de la misma pestaña: restaurar foco y cursor
+      if(activeId){
+        var el = document.getElementById(activeId);
+        if(el){
+          el.focus();
+          if(activeSelStart!==null && typeof el.setSelectionRange==='function'){
+            try{ el.setSelectionRange(activeSelStart, activeSelEnd); }catch(e){}
+          }
         }
       }
-    } else if(!tabChanged && activeId){
-      // Re-render dentro de la misma pestaña (p. ej. escribiendo en un buscador): devolver el foco y el cursor
-      const el = document.getElementById(activeId);
-      if(el){
-        el.focus();
-        if(activeSelStart!==null && typeof el.setSelectionRange==='function'){
-          try{ el.setSelectionRange(activeSelStart, activeSelEnd); }catch(e){}
-        }
-      }
+      if(currentTab==='informes') initCharts();
     }
-    if(currentTab==="informes") initCharts();
   }, 0);
 }
 
@@ -1957,8 +1971,9 @@ function buscarEnAlmacen(valor){
 // cambiar los filtros de género/categoría/marca, para no perder el foco ni
 // provocar parpadeo.
 function actualizarRejillaAlmacen(){
-  var rejilla = document.querySelector('#view .grid-cards');
-  if(!rejilla){ render(); return; }
+  var rejilla = document.querySelector('#tab-almacen .grid-cards');
+    if(!rejilla){ render(); return; }
+  if(rejilla.contains(document.activeElement)) document.body.focus();
   var nueva = document.createElement('div');
   nueva.innerHTML = tarjetasAlmacen();
   rejilla.parentNode.replaceChild(nueva.firstChild, rejilla);
@@ -2095,7 +2110,7 @@ function renderAlmacen(){
       <div class="scan-label">Recepción rápida — escanea el código de la caja para sumar stock</div>
       <div class="scan-row">
         <span class="scan-cursor">▌</span>
-        <input id="scan-almacen" class="scan-input" type="text" placeholder="Esperando código de barras..." autocomplete="off">
+        <input id="scan-almacen" class="scan-input" type="text" placeholder="Esperando código de barras..." autocomplete="off" readonly tabindex="-1" style="pointer-events:none;">
       </div>
     </div>
     <div class="toolbar">
@@ -2299,8 +2314,10 @@ function calcularHistorialVentas(){
 function actualizarCarrito(){
   var wrap = document.getElementById('ventas-carrito-wrap');
   if(!wrap){ render(); return; }
-  // renderVentas() genera todo el HTML; nosotros solo extraemos el bloque
-  // del carrito del HTML resultante y lo sustituimos en el DOM.
+  // Mover el foco al body antes de sustituir el DOM: si un elemento dentro
+  // del bloque tenía el foco y lo pierde al desaparecer, Android busca el
+  // siguiente elemento enfocable y puede abrir el teclado táctil.
+  if(wrap.contains(document.activeElement)) document.body.focus();
   var tmp = document.createElement('div');
   tmp.innerHTML = renderVentas();
   var nuevoWrap = tmp.querySelector('#ventas-carrito-wrap');
@@ -2454,7 +2471,7 @@ function renderVentas(){
       <div class="scan-label">Escanea el código de barras de cada par para añadirlo a la venta</div>
       <div class="scan-row">
         <span class="scan-cursor">▌</span>
-        <input id="scan-ventas" class="scan-input" type="text" placeholder="Esperando código de barras..." autocomplete="off">
+        <input id="scan-ventas" class="scan-input" type="text" placeholder="Esperando código de barras..." autocomplete="off" readonly tabindex="-1" style="pointer-events:none;">
       </div>
     </div>
     ${state.products.length===0 ? `<div class="note" style="margin-top:8px;">Todavía no tienes productos en el almacén. Añade alguno en la pestaña "Almacén" antes de vender.</div>` : `
@@ -4761,11 +4778,8 @@ function confirmarEliminarDevolucionesSeleccionadas(){
 }
 
 function eliminarTicket(ticketId){
-  borrarTicketRemoto(ticketId);
-
   const t = state.tickets.find(x=>x.id===ticketId);
   if(!t) return;
-  // Guardar scroll AHORA, antes de que el modal toque el DOM
   try{ _scrollGuardado = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0; }catch(e){ _scrollGuardado=0; }
 
   const lineas = state.sales.filter(s=>s.ticketId===ticketId);
@@ -4800,7 +4814,7 @@ function confirmarEliminarTicket(ticketId){
       const info = tallaInfo(p, s.talla);
       if(!p.tallas[s.talla]) p.tallas[s.talla] = {stock:0, barcode:""};
       p.tallas[s.talla].stock = (info.stock||0) + s.cantidad;
-      p._mod = Date.now();   // si no, la fusión con otro dispositivo descarta la reposición
+      p._mod = Date.now();
     }
   });
   // Borrar ventas, devoluciones y ticket
@@ -4808,7 +4822,10 @@ function confirmarEliminarTicket(ticketId){
   state.devoluciones = state.devoluciones.filter(d=>d.ticketId!==ticketId);
   state.tickets = state.tickets.filter(x=>x.id!==ticketId);
   ticketsSeleccionadosParaBorrar.delete(ticketId);
+  // Borrar de Firebase DESPUÉS de reponer el stock en local y guardar,
+  // para que la sincronización no pise el stock recién repuesto.
   saveState();
+  borrarTicketRemoto(ticketId);
   closeModal();
   renderPreservandoScrollDe('registro-ventas-scroll');
   showToast("Ticket eliminado y stock repuesto ✓", "ok");
@@ -7288,13 +7305,10 @@ function comprobarVersionPublicada(){
 }
 
 document.querySelectorAll(".tabs button").forEach(btn=>{
-  btn.addEventListener("click", ()=>{
-    if(btn.dataset.tab === currentTab) return;   // ya estamos aquí, no hacer nada
-    const view = document.getElementById("view");
-    if(view) view.style.opacity = "0";
+  btn.addEventListener("click", function(){
+    if(btn.dataset.tab === currentTab) return;
     currentTab = btn.dataset.tab;
     render();
-    if(view) view.style.opacity = "";
   });
 });
 
