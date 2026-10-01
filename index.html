@@ -424,7 +424,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "12.34";
+const APP_VERSION = "12.38";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -2803,6 +2803,7 @@ function regenerarCodigosDuplicados(){
       if(nuevo){
         p.tallas[u.talla].barcode = nuevo;
         p.tallas[u.talla].etiquetasImpresas = 0;   // el código cambió: las que hubiera impresas ya no sirven
+        p.tallas[u.talla].etiquetasFecha = Date.now();
         p._mod = Date.now(); cambiados++;
       }
     });
@@ -3580,14 +3581,6 @@ function renderInformes(){
     </div>
     <div style="font-size:12px;color:var(--ink-dim);margin-top:6px;">${ticketsFiltrados.length} ticket(s) en el periodo seleccionado.</div>
     ` : `<div class="empty-state">${state.tickets.length? 'Ningún ticket en el periodo seleccionado.' : 'Aún no se ha registrado ningún ticket.'}</div>`}
-
-    <div class="note">
-      Estos cálculos cubren precio de venta, margen e IVA repercutido, útiles para tu contabilidad del día a día.
-      La tributación por <b>módulos (estimación objetiva)</b> en España se calcula con coeficientes fijados por Hacienda
-      sobre signos, índices y módulos del negocio (superficie del local, personal empleado, potencia eléctrica, etc.),
-      no solo a partir de las ventas. Para el cálculo y presentación oficial de módulos e IVA trimestral,
-      te recomiendo confirmarlo con tu gestor o asesor fiscal.
-    </div>
   `;
 }
 
@@ -4707,9 +4700,11 @@ function confirmarEliminarTicketsSeleccionados(){
         p._mod = Date.now();
       }
     });
+    // Igual que en el borrado individual: no reponer dos veces lo ya repuesto por devoluciones
+    state.devoluciones.filter(d=>d.ticketId===ticketId).forEach(_deshacerReponerStock);
     state.sales = state.sales.filter(s=>s.ticketId!==ticketId);
     state.devoluciones = state.devoluciones.filter(d=>d.ticketId!==ticketId);
-  state.cambios = (state.cambios||[]).filter(c=>c.ticketId!==ticketId);
+    state.cambios = (state.cambios||[]).filter(c=>c.ticketId!==ticketId);
     state.tickets = state.tickets.filter(x=>x.id!==ticketId);
     borrarTicketRemoto(ticketId);
   });
@@ -4859,7 +4854,7 @@ function eliminarTicket(ticketId){
   const tieneDevs = devs.length > 0;
 
   const aviso = tieneDevs
-    ? `<p style="color:var(--red);font-size:13px;">⚠️ Este ticket tiene <b>${devs.length} devolución(es)</b> registrada(s). Al eliminarlo también se borrarán esas devoluciones.</p>`
+    ? `<p style="color:var(--red);font-size:13px;">⚠️ Este ticket tiene <b>${devs.length} devolución(es)</b> registrada(s). Al eliminarlo también se borrarán esas devoluciones.</p><p style="color:var(--ink-dim);font-size:13px;">Solo se repondrá el stock que aún no se repuso con ellas.</p>`
     : `<p style="color:var(--ink-dim);font-size:13px;">Se repondrá el stock de ${lineas.length} artículo(s). Esta acción no se puede deshacer.</p>`;
 
   document.getElementById("modal-root").innerHTML = `
@@ -4889,6 +4884,11 @@ function confirmarEliminarTicket(ticketId){
       p._mod = Date.now();
     }
   });
+  // Las devoluciones de este ticket que ya repusieron stock lo hicieron al
+  // registrarse: hay que restar esos pares, o se repondrían dos veces (una al
+  // devolver y otra al borrar el ticket entero). El resultado neto es que
+  // solo se repone lo que NO se había repuesto ya.
+  state.devoluciones.filter(d=>d.ticketId===ticketId).forEach(_deshacerReponerStock);
   // Borrar ventas, devoluciones y ticket
   state.sales = state.sales.filter(s=>s.ticketId!==ticketId);
   state.devoluciones = state.devoluciones.filter(d=>d.ticketId!==ticketId);
@@ -5658,6 +5658,51 @@ var etiquetasSeleccion = {};   // clave "productId|talla" -> nº de etiquetas
 var etiquetasFiltroMarca = '';
 var etiquetasFiltroModelo = '';
 
+// ---- Etiquetas puestas en el stock actual ----
+// "etiquetasImpresas" es el nº de pares que llevaban etiqueta en el momento
+// "etiquetasFecha". Las etiquetas se van con los pares que se venden, así que
+// las que hay AHORA son esas menos lo vendido desde entonces (y nunca más que
+// el stock). Se calcula a partir de las líneas de venta, que ya se sincronizan
+// entre equipos: no hay que mantener ningún número aparte cada vez que se
+// vende. Antes el contador solo subía: con 10 impresas y 10 vendidos seguía
+// diciendo 10, y los 7 pares nuevos que llegaban parecían ya etiquetados.
+// Los contadores anteriores a este cambio no tienen fecha: se dan por buenos
+// a partir del momento de esta versión.
+var ETIQ_FECHA_BASE = 1790884759028;
+
+// Salidas de stock por talla: "idProducto|talla" -> [[momento, pares], ...].
+// Se construye una vez por operación, no una vez por talla.
+function _mapaSalidas(){
+  var m = {};
+  (state.sales||[]).forEach(function(s){
+    if(!s || !s.productId || s.productId==='__manual__') return;
+    // Un par cambiado de talla salió de la nueva talla en el momento del cambio
+    var cuando = s._cambiadaEn || Date.parse(s.fecha) || 0;
+    var k = s.productId + '|' + s.talla;
+    (m[k] = m[k] || []).push([cuando, s.cantidad || 0]);
+  });
+  return m;
+}
+
+function etiquetasConEtiqueta(p, talla, mapa){
+  var info = tallaInfo(p, talla);
+  var base = info.etiquetasImpresas || 0;
+  if(base <= 0) return 0;
+  var desde = info.etiquetasFecha || ETIQ_FECHA_BASE;
+  var lista = (mapa || _mapaSalidas())[p.id + '|' + talla] || [];
+  var vendidas = 0;
+  lista.forEach(function(x){ if(x[0] > desde) vendidas += x[1]; });
+  return Math.max(0, Math.min(info.stock || 0, base - vendidas));
+}
+
+// Anota cuántos pares de esta talla llevan etiqueta AHORA (corrección a
+// mano, impresión confirmada...). El producto lo marca quien llama (_mod).
+function _anotarConEtiqueta(p, talla, valor){
+  if(!p.tallas[talla]) p.tallas[talla] = {stock:0, barcode:""};
+  p.tallas[talla].etiquetasImpresas = Math.max(0, valor || 0);
+  p.tallas[talla].etiquetasFecha = Date.now();
+}
+
 function claveEtiqueta(pid, talla){ return pid + '|' + talla; }
 
 
@@ -5995,6 +6040,7 @@ function renderEtiquetasModal(){
     });
   });
 
+  var mapaSalidas = _mapaSalidas();
   productosFiltrados.forEach(function(p){
     var tallas = tallasParaTipo(p.tipoArticulo||'zapatos', p.genero).filter(function(t){
       var i = tallaInfo(p,t); return i.barcode;
@@ -6006,13 +6052,13 @@ function renderEtiquetasModal(){
       var info = tallaInfo(p,t);
       var k = claveEtiqueta(p.id,t);
       var n = etiquetasSeleccion[k]||0;
-      var impresas = info.etiquetasImpresas||0;
+      var impresas = etiquetasConEtiqueta(p, t, mapaSalidas);
       filas += '<tr>'
         + '<td style="padding-left:22px;">Talla '+t+'</td>'
         + '<td style="font-family:var(--font-mono);font-size:11.5px;">'+escapeHtml(info.barcode)+'</td>'
         + '<td class="num">'+info.stock+' uds</td>'
         + '<td class="num"><input type="number" min="0" max="9999" value="'+impresas+'" style="width:64px;color:var(--ink-dim);" '
-        + 'title="Cuántas etiquetas de esta talla ya se han impreso antes. Corrígelo a mano si no coincide con la realidad." '
+        + 'title="Pares de esta talla que hay ahora en stock y ya llevan etiqueta. Baja sola al vender. Corrígelo a mano si no coincide con la realidad." '
         + 'onchange="ajustarEtiquetasImpresas(\''+p.id+'\',\''+t+'\',this.value); actualizarTotalEtiquetas();"></td>'
         + '<td class="num"><input type="number" min="0" max="200" value="'+n+'" style="width:70px;" '
         + 'onchange="etiquetasSeleccion[\''+k+'\']=parseInt(this.value)||0; actualizarTotalEtiquetas();"></td>'
@@ -6065,12 +6111,11 @@ function renderEtiquetasModal(){
         </div>
 
         <div class="toolbar">
-          <button class="btn small secondary" onclick="etiquetasPorStock()">Una por unidad en stock${etiquetasFiltroMarca?' (solo '+escapeHtml(etiquetasFiltroModelo||etiquetasFiltroMarca)+')':''}</button>
-          <button class="btn small secondary" onclick="etiquetasFijas(1)">Una de cada${etiquetasFiltroMarca?' (solo '+escapeHtml(etiquetasFiltroModelo||etiquetasFiltroMarca)+')':''}</button>
+          <button class="btn small secondary" onclick="etiquetasPorStock()" title="Pone en cada talla el stock menos las etiquetas ya impresas">Solo las que faltan${etiquetasFiltroMarca?' ('+escapeHtml(etiquetasFiltroModelo||etiquetasFiltroMarca)+')':''}</button>
           <button class="btn small secondary" onclick="etiquetasFijas(0)">Poner todo a cero${etiquetasFiltroMarca?' (solo '+escapeHtml(etiquetasFiltroModelo||etiquetasFiltroMarca)+')':''}</button>
         </div>
         <div class="toolbar" style="margin-top:6px;">
-          <button class="btn small secondary" onclick="confirmarMarcarTodoComoImpreso()" title="Fija el contador de 'Ya impresas' de cada talla al mismo número que su stock actual, como punto de partida">📋 Ya llevan etiqueta (= stock actual)${etiquetasFiltroMarca?' (solo '+escapeHtml(etiquetasFiltroModelo||etiquetasFiltroMarca)+')':''}</button>
+          <button class="btn small secondary" onclick="confirmarMarcarTodoComoImpreso()" title="Anota que todos los pares que hay ahora en stock ya llevan etiqueta, como punto de partida">📋 Ya llevan etiqueta (= stock actual)${etiquetasFiltroMarca?' (solo '+escapeHtml(etiquetasFiltroModelo||etiquetasFiltroMarca)+')':''}</button>
         </div>
         <div id="etiq-marcar-impreso-wrap"></div>
         <div class="field-row">
@@ -6089,7 +6134,7 @@ function renderEtiquetasModal(){
         </div>
         <div id="etiquetas-tabla-scroll" style="max-height:340px;overflow:auto;border-radius:var(--radius-sm);box-shadow:var(--shadow);">
           <table style="box-shadow:none;border-radius:0;">
-            <thead style="position:sticky;top:0;z-index:2;"><tr><th>Artículo / talla</th><th>Código</th><th class="num">Stock</th><th class="num">Ya impresas</th><th class="num">Etiquetas</th></tr></thead>
+            <thead style="position:sticky;top:0;z-index:2;"><tr><th>Artículo / talla</th><th>Código</th><th class="num">Stock</th><th class="num" title="Pares de esta talla que hay ahora en stock y ya llevan etiqueta. Baja sola cuando vendes.">Con etiqueta</th><th class="num">Etiquetas</th></tr></thead>
             <tbody>${filas}</tbody>
           </table>
         </div>
@@ -6192,13 +6237,14 @@ function completarUltimaHoja(){
     if(p){ marcasSel[p.marca]=true; modelosSel[p.marca+'|'+p.modelo]=true; }
   });
 
+  var mapaSalidas = _mapaSalidas();
   var candidatos = [];
   state.products.forEach(function(p){
     tallasParaTipo(p.tipoArticulo||'zapatos', p.genero).forEach(function(t){
       var info = tallaInfo(p,t);
       if(!info.barcode) return;
       var k = claveEtiqueta(p.id,t);
-      var pendienteReal = Math.max(0, (info.stock||0) - (info.etiquetasImpresas||0));
+      var pendienteReal = Math.max(0, (info.stock||0) - etiquetasConEtiqueta(p, t, mapaSalidas));
       var margen = pendienteReal - (etiquetasSeleccion[k]||0);
       if(margen<=0) return;
       var prioridad = modelosSel[p.marca+'|'+p.modelo] ? 0 : (marcasSel[p.marca] ? 1 : 2);
@@ -6298,7 +6344,7 @@ function _claveCoincideConFiltro(k){
 }
 
 // Fija el punto de partida real: todo lo que hay en stock ahora mismo ya
-// lleva su etiqueta puesta. Es distinto de "Una por unidad en stock", que
+// lleva su etiqueta puesta. Es distinto de "Solo las que faltan", que
 // decide qué imprimir AHORA -esto no imprime nada, solo pone al día el
 // contador de "ya impresas" para que a partir de aquí solo cuente lo que
 // cambie de verdad (mercancía nueva, devoluciones, etc.).
@@ -6314,7 +6360,7 @@ function confirmarMarcarTodoComoImpreso(){
     : 'toda la tienda';
   wrap.innerHTML =
     '<div style="background:var(--canvas);border-radius:var(--radius-sm);padding:10px;margin-top:6px;">'
-    + '<div style="font-size:12.5px;">Esto pone <b>"Ya impresas"</b> = stock actual de cada talla, en <b>'+escapeHtml(alcance)+'</b>. No imprime nada, y <b style="color:var(--red);">sobrescribe</b> cualquier conteo que ya hubiera ahí.</div>'
+    + '<div style="font-size:12.5px;">Esto pone <b>"Con etiqueta"</b> = stock actual de cada talla, en <b>'+escapeHtml(alcance)+'</b>. No imprime nada, y <b style="color:var(--red);">sobrescribe</b> cualquier conteo que ya hubiera ahí.</div>'
     + '<div style="margin-top:8px;display:flex;gap:8px;">'
     +   '<button class="btn small secondary" onclick="cancelarMarcarTodoComoImpreso()">Cancelar</button>'
     +   '<button class="btn small accent" onclick="marcarTodoComoImpreso()">✓ Sí, fijar el punto de partida</button>'
@@ -6335,17 +6381,18 @@ function marcarTodoComoImpreso(){
       var k = claveEtiqueta(p.id,t);
       if(!_claveCoincideConFiltro(k)) return;
       if(!p.tallas[t]) return;
-      p.tallas[t].etiquetasImpresas = info.stock||0;
+      _anotarConEtiqueta(p, t, info.stock||0);
       p._mod = Date.now();
       n++;
     });
   });
   saveState();
   renderEtiquetasModalPreservandoScroll();
-  showToast(n+' talla(s) puestas al día: "ya impresas" = stock actual ✓', 'ok');
+  showToast(n+' talla(s) puestas al día: "con etiqueta" = stock actual ✓', 'ok');
 }
 
 function etiquetasPorStock(){
+  var mapaSalidas = _mapaSalidas();
   // Solo propone las que de verdad faltan: el stock actual menos las que ya
   // se imprimieron antes para esa misma talla. Así, repetir esto cada
   // semana no vuelve a pedir etiquetas de algo que ya está pegado.
@@ -6355,7 +6402,7 @@ function etiquetasPorStock(){
     var p = state.products.find(function(x){ return x.id===partes[0]; });
     if(!p) return;
     var info = tallaInfo(p,partes[1]);
-    etiquetasSeleccion[k] = Math.max(0, (info.stock||0) - (info.etiquetasImpresas||0));
+    etiquetasSeleccion[k] = Math.max(0, (info.stock||0) - etiquetasConEtiqueta(p, partes[1], mapaSalidas));
   });
   renderEtiquetasModalPreservandoScroll();
 }
@@ -6367,7 +6414,7 @@ function etiquetasPorStock(){
 function ajustarEtiquetasImpresas(productId, talla, valor){
   var p = state.products.find(function(x){ return x.id===productId; });
   if(!p || !p.tallas[talla]) return;
-  p.tallas[talla].etiquetasImpresas = Math.max(0, parseInt(valor)||0);
+  _anotarConEtiqueta(p, talla, Math.max(0, parseInt(valor)||0));
   p._mod = Date.now();
   saveState();
 }
@@ -6398,15 +6445,10 @@ function imprimirHojaEtiquetas(){
 
   if(!etiquetas.length){ showToast("Indica al menos una etiqueta.", "err", false); return; }
 
-  // Se suma al contador de "ya impresas" de cada talla lo que se acaba de
-  // mandar a imprimir, para que la próxima vez la app sepa que esto ya no
-  // hace falta reimprimirlo.
-  impresasPorTalla.forEach(function(x){
-    if(!x.p.tallas[x.talla]) return;
-    x.p.tallas[x.talla].etiquetasImpresas = (x.p.tallas[x.talla].etiquetasImpresas||0) + x.n;
-    x.p._mod = Date.now();   // si no se marca como modificado, la fusión con otro dispositivo descarta este cambio
-  });
-  saveState();
+  // Ya NO se suma aquí a "ya impresas": enviar a imprimir no garantiza que
+  // haya salido (papel atascado, impresión cancelada...). Se pregunta después
+  // y solo se suma si se confirma.
+  var pendienteSumar = impresasPorTalla.map(function(x){ return { productId: x.p.id, talla: x.talla, n: x.n }; });
 
   var fmt = formatoEtiquetaActual();
   var porHoja = fmt.cols * fmt.filas;
@@ -6461,7 +6503,50 @@ function imprimirHojaEtiquetas(){
     </body></html>
   `;
   imprimirDocumento(htmlEtiquetas, "Etiquetas");
+  preguntarSiSeImprimieronEtiquetas(pendienteSumar, etiquetas.length, Math.ceil(etiquetas.length / porHoja));
+}
+
+// ---- Confirmación de que las etiquetas se han impreso de verdad ----
+var _etiqPendienteConfirmar = null;
+
+function preguntarSiSeImprimieronEtiquetas(lista, total, hojas){
+  _etiqPendienteConfirmar = lista;
+  // Sin onclick en el fondo: hay que contestar a propósito, un toque suelto
+  // no debe decidir si se suman o no.
+  document.getElementById("modal-root").innerHTML =
+    '<div class="modal-overlay">'
+    + '<div class="modal" style="max-width:430px;">'
+    +   '<h3 style="margin-top:0;">🖨️ ¿Se han impreso las etiquetas?</h3>'
+    +   '<p>Se han enviado <b>'+total+' etiqueta'+(total===1?'':'s')+'</b> a imprimir ('+hojas+' hoja'+(hojas===1?'':'s')+').</p>'
+    +   '<div class="note" style="margin-bottom:6px;">Si contestas <b>Sí</b>, se anotan como etiquetas puestas y dejan de proponerse como pendientes. Si contestas <b>No</b> (se atascó el papel, cancelaste la impresión...), no se anota nada y vuelves a la selección para repetirlo.</div>'
+    +   '<div class="modal-actions" style="justify-content:center;gap:12px;">'
+    +     '<button class="btn secondary" onclick="confirmarEtiquetasImpresas(false)">No, no se han impreso</button>'
+    +     '<button class="btn accent" onclick="confirmarEtiquetasImpresas(true)">Sí, se han impreso</button>'
+    +   '</div>'
+    + '</div></div>';
+}
+
+function confirmarEtiquetasImpresas(impresas){
+  var lista = _etiqPendienteConfirmar || [];
+  _etiqPendienteConfirmar = null;
+  if(!impresas){
+    // No se suma nada. Se devuelve la selección tal cual para poder reintentarlo
+    renderEtiquetasModal();
+    showToast('No se ha anotado ninguna etiqueta como puesta.', 'ok');
+    return;
+  }
+  var total = 0, ahora = Date.now(), mapa = _mapaSalidas();
+  lista.forEach(function(x){
+    var p = state.products.find(function(q){ return q.id === x.productId; });
+    if(!p || !p.tallas[x.talla]) return;
+    // Las que ya había puestas (descontando lo vendido) más las recién impresas
+    _anotarConEtiqueta(p, x.talla, etiquetasConEtiqueta(p, x.talla, mapa) + x.n);
+    p._mod = ahora;   // si no se marca como modificado, la fusión con otro dispositivo descarta este cambio
+    total += x.n;
+  });
+  saveState();
   closeModal();
+  showToast(total+' etiqueta'+(total===1?'':'s')+' anotada'+(total===1?'':'s')+' como puesta'+(total===1?'':'s')+' ✓', 'ok');
 }
 
 let productFormFoto = null;
@@ -6742,6 +6827,7 @@ function saveProduct(id){
         const antigua = pAntes.tallas[t];
         if(antigua && antigua.barcode && antigua.barcode===tallas[t].barcode){
           tallas[t].etiquetasImpresas = antigua.etiquetasImpresas||0;
+          if(antigua.etiquetasFecha) tallas[t].etiquetasFecha = antigua.etiquetasFecha;
         }
       });
     }
@@ -6885,7 +6971,9 @@ function assignBarcodeExisting(code){
   const p = state.products.find(x=>x.id===productId);
   const info = tallaInfo(p, talla);
   const impresasAntes = (p.tallas[talla] && p.tallas[talla].etiquetasImpresas) || 0;
+  const fechaAntes = p.tallas[talla] && p.tallas[talla].etiquetasFecha;
   p.tallas[talla] = { stock:(info.stock||0)+cantidad, barcode:code, etiquetasImpresas: impresasAntes };
+  if(fechaAntes) p.tallas[talla].etiquetasFecha = fechaAntes;
   p._mod = Date.now();
   saveState();
   closeModal();
