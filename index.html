@@ -424,7 +424,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "12.33";
+const APP_VERSION = "12.34";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -1900,6 +1900,18 @@ function marcarTabsSucias(){
   _cacheTab = {};
 }
 
+// Cualquier clic, escritura o cambio dentro de la pestaña activa deja obsoleto su HTML
+// guardado (puede haber cambiado un filtro o una selección que no se guarda). Va en
+// fase de captura para ejecutarse ANTES que el manejador del propio elemento; si ese
+// manejador deja la caché al día (actualizarCarrito...), esa versión es la que cuenta.
+(function(){
+  var vista = document.getElementById('view');
+  if(!vista) return;
+  ['click','input','change'].forEach(function(ev){
+    vista.addEventListener(ev, function(){ _cacheTab[currentTab] = null; }, true);
+  });
+})();
+
 function render(){
   document.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("active", b.dataset.tab===currentTab));
 
@@ -1922,8 +1934,11 @@ function render(){
   var activeSelStart = (active && typeof active.selectionStart==='number') ? active.selectionStart : null;
   var activeSelEnd   = (active && typeof active.selectionEnd==='number')   ? active.selectionEnd   : null;
 
-  // Usar caché si la pestaña está limpia; recalcular si está sucia
-  if(_tabsSucias[currentTab] || !_cacheTab[currentTab]){
+  // La caché solo sirve al VOLVER a una pestaña que no ha cambiado. Si se llama a
+  // render() estando ya en ella, algo ha cambiado (un filtro, una subpestaña, el
+  // periodo...): se repinta siempre. Antes se devolvía el HTML guardado y esos
+  // botones parecían no hacer nada.
+  if(!tabChanged || _tabsSucias[currentTab] || !_cacheTab[currentTab]){
     try{
       _cacheTab[currentTab] = cfg.fn();
     }catch(errRender){
