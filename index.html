@@ -424,7 +424,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "12.28";
+const APP_VERSION = "12.31";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -487,7 +487,7 @@ var _timerSync = null;
 //   impresora) podría apagar la impresión del Kozen sin que nadie la tocara
 //   allí — fue justo lo que pasó y dejó de imprimir en silencio.
 var AJUSTES_LOCALES = ['bloqueEAN','contadorEAN','etiqFormato','etiqOffsetX','etiqOffsetY','etiqEscala','cajonHabilitado','cajonModo',
-  'escposActivo','rawbtMetodo','escposEuro','escposEuroByte','escposMargenPie','escposLogo','escposLogoOffsetX','escposPagina','escposColumnas','escposCortar','escposCajon'];
+  'escposActivo','rawbtMetodo','escposEuro','escposEuroByte','escposMargenPie','escposLogo','escposLogoOffsetX','escposPagina','escposColumnas','escposCortar','escposCajon','expoFondo'];
 
 function guardarAjustesLocales(){
   try{
@@ -551,6 +551,9 @@ function _unir(listaA, listaB, campoFecha){
       if(!r || !r.id) return;
       var prev = res[r.id];
       if(!prev){ res[r.id] = r; return; }
+      // Línea cuya talla/pares se cambió después en un equipo: gana la última
+      var ca = r._cambiadaEn || 0, cb = prev._cambiadaEn || 0;
+      if(ca !== cb){ if(ca > cb) res[r.id] = r; return; }
       var fa = (r._mod || (campoFecha ? r[campoFecha] : 0) || 0);
       var fb = (prev._mod || (campoFecha ? prev[campoFecha] : 0) || 0);
       if(String(fa) > String(fb)) res[r.id] = r;
@@ -588,6 +591,7 @@ function fusionarEstados(local, remoto){
   resultado.sales        = _unir(local.sales,        remoto.sales,        'fecha');
   resultado.tickets      = _unir(local.tickets,      remoto.tickets,      'fecha');
   resultado.devoluciones = _unir(local.devoluciones, remoto.devoluciones, 'fecha');
+  resultado.cambios      = _unir(local.cambios,      remoto.cambios,      'fecha');
 
   // --- Productos: se conserva la ficha más reciente de cada uno ---
   resultado.products = _unir(local.products, remoto.products, null);
@@ -656,6 +660,7 @@ function fusionarEstados(local, remoto){
   resultado.sales.sort(function(a,b){ return String(a.fecha||'').localeCompare(String(b.fecha||'')); });
   resultado.tickets.sort(function(a,b){ return String(a.fecha||'').localeCompare(String(b.fecha||'')); });
   resultado.devoluciones.sort(function(a,b){ return String(a.fecha||'').localeCompare(String(b.fecha||'')); });
+  resultado.cambios.sort(function(a,b){ return String(a.fecha||'').localeCompare(String(b.fecha||'')); });
 
   resultado._fusionadas = ventasSoloLocales.length;
   return resultado;
@@ -798,7 +803,18 @@ function _incorporarTicketRemoto(data){
   var idsLocales = {};
   state.sales.forEach(function(s){ idsLocales[s.id] = true; });
   (data.l||[]).forEach(function(linea){
-    if(linea && linea.id && !idsLocales[linea.id]){ state.sales.push(linea); cambios = true; }
+    if(!linea || !linea.id) return;
+    if(!idsLocales[linea.id]){ state.sales.push(linea); cambios = true; return; }
+    // Línea ya conocida: solo se actualiza si en otro equipo se le cambió la
+    // talla DESPUÉS que aquí (marca _cambiadaEn), para no pisar nada más.
+    // (al repartir pares también cambian cantidad e importes, así que se
+    // sustituye la línea entera en el mismo objeto)
+    var local = state.sales.find(function(x){ return x.id===linea.id; });
+    if(local && (linea._cambiadaEn||0) > (local._cambiadaEn||0)){
+      Object.keys(local).forEach(function(k){ delete local[k]; });
+      Object.assign(local, linea);
+      cambios = true;
+    }
   });
   return cambios;
 }
@@ -1153,6 +1169,7 @@ function iniciarEscuchaFirebase(){
       // Migración de campos que puedan faltar
       if(!state.tickets) state.tickets=[];
       if(!state.devoluciones) state.devoluciones=[];
+      if(!state.cambios) state.cambios=[];
       state.tickets.forEach(function(t){ if(!t.estadoPago) t.estadoPago='completada'; if(t.datosCliente===undefined) t.datosCliente=null; });
       // Guardar en localStorage (copia local con fotos)
       storage.set(STORAGE_KEY, JSON.stringify(state));
@@ -1280,7 +1297,8 @@ function defaultState(){
     products: [],
     sales: [],
     tickets: [],
-    devoluciones: []
+    devoluciones: [],
+    cambios: []
   };
 }
 
@@ -1406,6 +1424,7 @@ async function loadState(){
   if(state.settings.demoSeeded===undefined) state.settings.demoSeeded = state.products.length>0;
   if(!state.tickets) state.tickets = [];
   if(!state.devoluciones) state.devoluciones = [];
+  if(!state.cambios) state.cambios = [];
   // Compatibilidad: tickets creados antes de añadir estadoPago
   if(state.tickets) state.tickets.forEach(t=>{ if(!t.estadoPago) t.estadoPago='completada'; if(t.datosCliente===undefined) t.datosCliente=null; });
   if(state.settings.escposActivo !== true) intentarReconectarCajon();
@@ -2148,6 +2167,7 @@ function renderAlmacen(){
           : ''}
       </select>
       <button class="btn secondary" onclick="openEtiquetasModal()" title="Imprimir hoja A4 de etiquetas con código de barras">🏷️ Etiquetas</button>
+      <button class="btn secondary" onclick="openExpoModal()" title="Tarjetas de 60 × 40 mm para el portaprecios de exposición">🪧 Exposición</button>
       <button class="btn accent" onclick="openProductForm(null)">➕ Nuevo producto</button>
     </div>
     ${tarjetasAlmacen()}
@@ -2181,20 +2201,25 @@ var _temporizadorBusquedaHistorial = null;
 function buscarEnHistorialVentas(valor){
   historyFilter = valor;
   clearTimeout(_temporizadorBusquedaHistorial);
-  _temporizadorBusquedaHistorial = setTimeout(function(){
-    var resumen = document.getElementById('historial-resumen');
-    var tbody = document.getElementById('historial-tbody');
-    var pie = document.getElementById('historial-pie');
-    if(!resumen || !tbody || !pie){ render(); return; }   // la pestaña ya no está: repintar entero
-    var c = calcularHistorialVentas();
-    resumen.innerHTML = '<span>Ventas en el filtro: <b>'+c.filtered.length+'</b></span>'
-      + '<span>Total: <b>'+eur(c.filteredTotal)+'</b></span>'
-      + '<span>Beneficio: <b>'+eur(c.filteredBeneficio)+'</b></span>';
-    tbody.innerHTML = c.rowsHist;
-    var nTickets = new Set(c.filtered.map(function(s){ return s.ticketId; })).size;
-    pie.innerHTML = c.filtered.length+' línea(s) · '+nTickets+' ticket(s)'
-      + (c.filtered.length>200 ? ' · <span style="color:var(--coral);">mostrando las 200 más recientes — afina la búsqueda para ver el resto</span>' : '');
-  }, 120);
+  _temporizadorBusquedaHistorial = setTimeout(actualizarHistorialVentas, 120);
+}
+
+// Repinta solo el resumen, las filas y el pie del historial de ventas, sin
+// tocar el resto de la pestaña ni el scroll.
+function actualizarHistorialVentas(){
+  var resumen = document.getElementById('historial-resumen');
+  var tbody = document.getElementById('historial-tbody');
+  var pie = document.getElementById('historial-pie');
+  if(!resumen || !tbody || !pie){ render(); return; }   // la pestaña ya no está: repintar entero
+  var c = calcularHistorialVentas();
+  resumen.innerHTML = '<span>Ventas en el filtro: <b>'+c.filtered.length+'</b></span>'
+    + '<span>Total: <b>'+eur(c.filteredTotal)+'</b></span>'
+    + '<span>Beneficio: <b>'+eur(c.filteredBeneficio)+'</b></span>';
+  tbody.innerHTML = c.rowsHist;
+  var nTickets = new Set(c.filtered.map(function(s){ return s.ticketId; })).size;
+  pie.innerHTML = c.filtered.length+' línea(s) · '+nTickets+' ticket(s)'
+    + (c.filtered.length>200 ? ' · <span style="color:var(--coral);">mostrando las 200 más recientes — afina la búsqueda para ver el resto</span>' : '');
+  _cacheTab['ventas'] = null;   // el HTML guardado de esta pestaña ya no vale
 }
 
 function calcularHistorialVentas(){
@@ -2297,12 +2322,12 @@ function calcularHistorialVentas(){
         ? `<button class="estado-pendiente" onclick="openPendienteModal('${ticket.id}')" title="${ticket.datosCliente&&ticket.datosCliente.nombre ? '👤 '+ticket.datosCliente.nombre : 'Sin datos de cliente'}">⏳ Pendiente${ticket.datosCliente&&ticket.datosCliente.nombre?' — '+escapeHtml(ticket.datosCliente.nombre):''}</button>`
         : `<span class="estado-completada">✅ Completada</span>`;
       rowsHistArr.push(`
-      <tr class="${claseTicket[s.ticketId] || 'ticket-row-a'}" data-ticketid="${s.ticketId}">
+      <tr class="${claseTicket[s.ticketId] || 'ticket-row-a'}" data-ticketid="${s.ticketId}" data-saleid="${s.id}">
         <td>${ticket? ticket.numSerieFactura : "—"}</td>
         <td>${new Date(s.fecha).toLocaleString('es-ES')}</td>
         <td>${escapeHtml(s.marca)}</td>
         <td>${escapeHtml(s.modelo)}</td>
-        <td class="num">${s.talla}</td>
+        <td class="num celda-talla">${htmlTallaVenta(s)}</td>
         <td class="num">${s.cantidad}</td>
         <td class="num">${eur(s.total)}</td>
         <td class="num">${eur(beneficioRealSale(s))}</td>
@@ -2313,6 +2338,7 @@ function calcularHistorialVentas(){
             ${estadoPago==='completada' && ticket ? `<button class="btn small" style="background:var(--gold);border-color:var(--gold);color:#3a2c00;" onclick="openPendienteModal('${ticket.id}')" title="Marcar como pendiente">⏳</button>` : ""}
             ${estadoPago==='pendiente' && ticket ? `<button class="btn small" style="background:var(--gold);border-color:var(--gold);color:#3a2c00;" onclick="openPendienteModal('${ticket.id}')" title="Ver / editar pendiente">⏳</button>` : ""}
             ${ticket ? `<button class="btn small secondary" onclick="abrirTicketImprimible('${ticket.id}')" title="Ver / reimprimir ticket">🖨️</button>` : ""}
+            ${puedeCambiarTalla(s)? `<button class="btn small secondary" onclick="openCambioTallaModal('${s.id}')" title="Cambiar de talla">🔄</button>` : ""}
             ${puedeDevolver? `<button class="btn small secondary" onclick="openDevolucionModal('${s.id}')" title="Registrar devolución">↩️</button>` : ""}
             ${ticket ? `<button class="btn small danger" onclick="eliminarTicket('${ticket.id}')" title="Eliminar ticket">🗑️</button>` : ""}
           </div>
@@ -2691,6 +2717,7 @@ function renderVentas(){
     </table>
     </div>
     ` : `<div class="empty-state">Aún no se ha registrado ninguna devolución ni garantía.</div>`}
+    ${htmlListadoCambios()}
   `;
 }
 
@@ -4667,6 +4694,7 @@ function confirmarEliminarTicketsSeleccionados(){
     });
     state.sales = state.sales.filter(s=>s.ticketId!==ticketId);
     state.devoluciones = state.devoluciones.filter(d=>d.ticketId!==ticketId);
+  state.cambios = (state.cambios||[]).filter(c=>c.ticketId!==ticketId);
     state.tickets = state.tickets.filter(x=>x.id!==ticketId);
     borrarTicketRemoto(ticketId);
   });
@@ -4849,6 +4877,7 @@ function confirmarEliminarTicket(ticketId){
   // Borrar ventas, devoluciones y ticket
   state.sales = state.sales.filter(s=>s.ticketId!==ticketId);
   state.devoluciones = state.devoluciones.filter(d=>d.ticketId!==ticketId);
+  state.cambios = (state.cambios||[]).filter(c=>c.ticketId!==ticketId);
   state.tickets = state.tickets.filter(x=>x.id!==ticketId);
   ticketsSeleccionadosParaBorrar.delete(ticketId);
   // Borrar de Firebase DESPUÉS de reponer el stock en local y guardar,
@@ -5615,6 +5644,211 @@ var etiquetasFiltroMarca = '';
 var etiquetasFiltroModelo = '';
 
 function claveEtiqueta(pid, talla){ return pid + '|' + talla; }
+
+
+// ============ ETIQUETAS DE EXPOSICIÓN (tarjetas de 60 × 40 mm) ============
+// Una tarjeta por MODELO (no por talla) para el portaprecios junto a cada
+// modelo expuesto. Se imprime solo la tinta: el color de fondo es el de la
+// cartulina. 21 tarjetas por folio A4 (3 columnas x 7 filas), pegadas entre
+// sí, con guías de corte en los márgenes.
+var EXPO_POR_HOJA = 21;
+var expoSeleccion = {};
+var expoFiltro = '';
+var expoSoloPromo = false;
+
+function _expoPrecios(p){
+  var pvp = precioConIVA(precioBaseConPromo(p));
+  var original = precioConIVA(p.precioVenta || 0);
+  var promo = !!(p.promo && p.promo.activo) && original > pvp + 0.004;
+  var pct = promo ? Math.round((1 - pvp/original) * 100) : 0;
+  return { pvp: pvp, original: original, promo: promo && pct > 0, pct: pct };
+}
+
+// Código HTML de UNA tarjeta, en milímetros, con estilos en línea para que
+// la vista previa y la hoja impresa sean idénticas.
+function tarjetaExpoHTML(p, conFondo){
+  var pr = _expoPrecios(p);
+  var tienda = String(state.settings.nombreTienda || 'Mil Pasos').toUpperCase();
+  var modelo = String(p.modelo || '');
+  var largo = modelo.length;
+  var tamModelo = largo <= 16 ? 4.76 : (largo <= 26 ? 3.7 : 3.0);
+  var lineasModelo = largo <= 16 ? 1 : 2;
+  var txt = eurSinDivisa(pr.pvp);
+  var tamPrecio = pr.promo ? (txt.length <= 5 ? 10.6 : 8.4) : (txt.length <= 6 ? 11.64 : 9.2);
+  var tamEuro = Math.round(tamPrecio * 0.545 * 100) / 100;
+
+  var bloquePrecio = '<div style="display:flex;align-items:baseline;white-space:nowrap;">'
+    + '<span style="font-size:'+tamPrecio+'mm;font-weight:800;line-height:.9;letter-spacing:-.03em;">'+txt+'</span>'
+    + '<span style="font-size:'+tamEuro+'mm;font-weight:700;margin-left:.7mm;">€</span></div>';
+  if(pr.promo){
+    bloquePrecio = '<div style="display:flex;align-items:flex-end;gap:2.2mm;">' + bloquePrecio
+      + '<div style="display:flex;flex-direction:column;align-items:flex-start;gap:.7mm;padding-bottom:.5mm;">'
+      +   '<span style="font-size:2.25mm;font-weight:700;background:#0C2620;color:#AEFFDF;padding:.26mm 1.3mm;border-radius:9mm;">-'+pr.pct+'%</span>'
+      +   '<span style="font-size:2.9mm;font-weight:500;text-decoration:line-through;white-space:nowrap;">'+eurSinDivisa(pr.original)+' €</span>'
+      + '</div></div>';
+  }
+
+  return '<div style="width:60mm;height:40mm;box-sizing:border-box;padding:3.4mm 3.7mm 2.9mm 3.7mm;'
+    + 'display:flex;flex-direction:column;overflow:hidden;color:#0C2620;font-family:Arial,Helvetica,sans-serif;'
+    + (conFondo ? 'background:#AEFFDF;' : '') + '">'
+    +   '<div style="font-size:2.51mm;font-weight:700;letter-spacing:.18em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+escapeHtml(p.marca||'')+'</div>'
+    +   '<div style="width:4.76mm;height:.46mm;background:#239886;margin-top:1.3mm;flex:none;"></div>'
+    +   '<div style="font-size:'+tamModelo+'mm;font-weight:700;line-height:1.05;margin-top:1.4mm;letter-spacing:-.01em;overflow:hidden;max-height:'+(tamModelo*1.05*lineasModelo+0.2)+'mm;">'+escapeHtml(modelo)+'</div>'
+    +   '<div style="margin-top:auto;">'+bloquePrecio+'</div>'
+    +   '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:.9mm;font-size:1.98mm;">'
+    +     '<span style="font-weight:500;">IVA incluido</span>'
+    +     '<span style="font-weight:700;letter-spacing:.2em;">'+escapeHtml(tienda)+'</span>'
+    +   '</div>'
+    + '</div>';
+}
+
+function _expoProductos(){
+  var term = expoFiltro.trim().toLowerCase();
+  return state.products.filter(function(p){
+    if(expoSoloPromo && !_expoPrecios(p).promo) return false;
+    return !term || (String(p.marca||'')+' '+String(p.modelo||'')).toLowerCase().indexOf(term) !== -1;
+  }).sort(function(a,b){
+    return (String(a.marca||'')+' '+String(a.modelo||'')).localeCompare(String(b.marca||'')+' '+String(b.modelo||''), 'es');
+  });
+}
+
+function _expoFilasHTML(){
+  var lista = _expoProductos();
+  if(!lista.length) return '<div style="padding:16px;text-align:center;color:var(--ink-dim);">Ningún modelo coincide.</div>';
+  return lista.map(function(p){
+    var pr = _expoPrecios(p);
+    return '<label style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-bottom:1px solid var(--line);cursor:pointer;text-transform:none;margin:0;">'
+      + '<input type="checkbox" '+(expoSeleccion[p.id]?'checked':'')+' onchange="expoMarcar(\''+p.id+'\', this.checked)" style="width:auto;">'
+      + '<span style="flex:1;font-size:13.5px;"><b>'+escapeHtml(p.marca||'')+'</b> '+escapeHtml(p.modelo||'')+'</span>'
+      + (pr.promo ? '<span style="font-size:11px;font-weight:700;background:var(--teal-light);color:var(--teal);padding:2px 8px;border-radius:99px;">-'+pr.pct+'%</span>' : '')
+      + '<span style="font-size:13px;font-variant-numeric:tabular-nums;min-width:64px;text-align:right;">'+eur(pr.pvp)+'</span>'
+      + '</label>';
+  }).join('');
+}
+
+function openExpoModal(){
+  expoSeleccion = {}; expoFiltro = ''; expoSoloPromo = false;
+  document.getElementById("modal-root").innerHTML =
+    '<div class="modal-overlay" onclick="if(event.target===this) closeModal()">'
+    + '<div class="modal" style="max-width:660px;">'
+    +   '<h3 style="margin-top:0;">🪧 Etiquetas de exposición <span style="font-weight:400;font-size:14px;color:var(--ink-dim);">60 × 40 mm</span></h3>'
+    +   '<div class="note" style="margin-bottom:12px;">Una tarjeta por modelo, para el portaprecios. Caben '+EXPO_POR_HOJA+' por folio A4 (3 × 7).</div>'
+    +   '<div class="field-row" style="align-items:center;">'
+    +     '<input id="expo-buscar" type="text" placeholder="Filtrar por marca o modelo..." oninput="expoFiltrar(this.value)" style="flex:1;min-width:180px;" autocomplete="off">'
+    +     '<label style="display:flex;align-items:center;gap:6px;text-transform:none;margin:0;font-size:13px;"><input type="checkbox" onchange="expoAlternarPromo(this.checked)" style="width:auto;"> Solo en promoción</label>'
+    +   '</div>'
+    +   '<div class="toolbar" style="margin:8px 0;">'
+    +     '<button class="btn small secondary" onclick="expoMarcarVisibles(true)">Marcar los visibles</button>'
+    +     '<button class="btn small secondary" onclick="expoMarcarVisibles(false)">Quitar los visibles</button>'
+    +   '</div>'
+    +   '<div id="expo-lista" style="max-height:260px;overflow:auto;-webkit-overflow-scrolling:touch;border-radius:var(--radius-sm);box-shadow:var(--shadow);">'+_expoFilasHTML()+'</div>'
+    +   '<div style="display:flex;gap:16px;align-items:center;margin-top:14px;flex-wrap:wrap;">'
+    +     '<div id="expo-preview" style="flex:none;"></div>'
+    +     '<div style="flex:1;min-width:200px;">'
+    +       '<div id="expo-resumen" style="font-size:14px;margin-bottom:10px;"></div>'
+    +       '<label style="display:flex;align-items:flex-start;gap:8px;text-transform:none;margin:0;font-size:12.5px;color:var(--ink-dim);">'
+    +         '<input type="checkbox" '+(state.settings.expoFondo===true?'checked':'')+' onchange="state.settings.expoFondo=this.checked; saveState();" style="width:auto;margin-top:2px;">'
+    +         '<span>Imprimir también el fondo menta (solo si usas papel blanco; con cartulina de color déjalo sin marcar)</span>'
+    +       '</label>'
+    +     '</div>'
+    +   '</div>'
+    +   '<div class="modal-actions">'
+    +     '<button class="btn secondary" onclick="closeModal()">Cancelar</button>'
+    +     '<button class="btn accent" onclick="imprimirExpo()">🖨️ Imprimir hoja</button>'
+    +   '</div>'
+    + '</div></div>';
+  actualizarResumenExpo();
+}
+
+function expoFiltrar(valor){
+  expoFiltro = valor;
+  var cont = document.getElementById('expo-lista');
+  if(cont) cont.innerHTML = _expoFilasHTML();
+  actualizarResumenExpo();
+}
+function expoAlternarPromo(v){
+  expoSoloPromo = !!v;
+  var cont = document.getElementById('expo-lista');
+  if(cont) cont.innerHTML = _expoFilasHTML();
+  actualizarResumenExpo();
+}
+function expoMarcar(id, marcado){
+  if(marcado) expoSeleccion[id] = true; else delete expoSeleccion[id];
+  actualizarResumenExpo();
+}
+function expoMarcarVisibles(marcar){
+  _expoProductos().forEach(function(p){ if(marcar) expoSeleccion[p.id] = true; else delete expoSeleccion[p.id]; });
+  var cont = document.getElementById('expo-lista');
+  var antes = cont ? cont.scrollTop : 0;
+  if(cont){ cont.innerHTML = _expoFilasHTML(); cont.scrollTop = antes; }
+  actualizarResumenExpo();
+}
+
+// Resumen (cuántas, cuántos folios) y vista previa: solo esas dos zonas
+function actualizarResumenExpo(){
+  var ids = Object.keys(expoSeleccion);
+  var n = ids.length;
+  var hojas = Math.ceil(n / EXPO_POR_HOJA);
+  var res = document.getElementById('expo-resumen');
+  if(res){
+    res.innerHTML = n
+      ? '<b>'+n+'</b> tarjeta'+(n===1?'':'s')+' · <b>'+hojas+'</b> folio'+(hojas===1?'':'s')+' A4'
+        + (n % EXPO_POR_HOJA ? '<div style="font-size:12px;color:var(--ink-dim);">El último folio lleva '+(n % EXPO_POR_HOJA)+' de '+EXPO_POR_HOJA+'.</div>' : '')
+      : '<span style="color:var(--ink-dim);">Marca los modelos que quieras imprimir.</span>';
+  }
+  var prev = document.getElementById('expo-preview');
+  if(prev){
+    var visibles = _expoProductos();
+    var modelo = null;
+    for(var i=0;i<visibles.length;i++){ if(expoSeleccion[visibles[i].id]){ modelo = visibles[i]; break; } }
+    if(!modelo) modelo = visibles[0] || state.products[0];
+    prev.innerHTML = modelo
+      ? '<div style="width:96mm;height:64mm;background:#AEFFDF;box-shadow:var(--shadow);"><div style="transform:scale(1.6);transform-origin:top left;width:60mm;height:40mm;">'+tarjetaExpoHTML(modelo, false)+'</div></div>'
+        + '<div style="font-size:11px;color:var(--ink-dim);margin-top:4px;">Vista previa sobre cartulina menta</div>'
+      : '';
+  }
+}
+
+function imprimirExpo(){
+  var productos = state.products.filter(function(p){ return expoSeleccion[p.id]; })
+    .sort(function(a,b){ return (String(a.marca||'')+' '+String(a.modelo||'')).localeCompare(String(b.marca||'')+' '+String(b.modelo||''), 'es'); });
+  if(!productos.length){ showToast('Marca al menos un modelo.', 'err', false); return; }
+  var conFondo = state.settings.expoFondo === true;
+
+  var hojas = [];
+  for(var i=0; i<productos.length; i+=EXPO_POR_HOJA) hojas.push(productos.slice(i, i+EXPO_POR_HOJA));
+
+  // Guías de corte en los márgenes (fuera de las tarjetas)
+  var guias = '';
+  for(var c=0; c<=3; c++){
+    var x = 15 + 60*c - 0.1;
+    guias += '<span class="tk" style="left:'+x+'mm;top:4.5mm;width:.2mm;height:3mm;"></span>';
+    guias += '<span class="tk" style="left:'+x+'mm;top:289.5mm;width:.2mm;height:3mm;"></span>';
+  }
+  for(var f=0; f<=7; f++){
+    var y = 8.5 + 40*f - 0.1;
+    guias += '<span class="tk" style="top:'+y+'mm;left:9mm;height:.2mm;width:3mm;"></span>';
+    guias += '<span class="tk" style="top:'+y+'mm;left:198mm;height:.2mm;width:3mm;"></span>';
+  }
+
+  var cuerpo = hojas.map(function(grupo){
+    return '<div class="hoja">' + grupo.map(function(p){ return tarjetaExpoHTML(p, conFondo); }).join('') + guias + '</div>';
+  }).join('');
+
+  var doc = '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Etiquetas de exposición</title>'
+    + '<style>'
+    + '@page{ size: A4 portrait; margin: 0; }'
+    + '*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
+    + 'html,body{margin:0;padding:0;background:#e9e9e9;font-family:Arial,Helvetica,sans-serif;}'
+    + '.hoja{position:relative;width:210mm;height:296mm;background:#fff;margin:0 auto 6mm;padding:8.5mm 0 0 15mm;'
+    +   'display:grid;grid-template-columns:repeat(3,60mm);grid-auto-rows:40mm;page-break-after:always;overflow:hidden;}'
+    + '.hoja:last-child{page-break-after:auto;}'
+    + '.tk{position:absolute;background:#666;}'
+    + '@media print{ html,body{background:#fff;} .hoja{margin:0;} }'
+    + '</style></head><body>' + cuerpo + '</body></html>';
+  imprimirDocumento(doc, 'Etiquetas de exposición');
+  closeModal();
+}
 
 function openEtiquetasModal(){
   etiquetasSeleccion = {};
@@ -7099,6 +7333,181 @@ function estadoDevolucion(sale){
   // 'parcial' avisa de que la línea aún tiene pares sin devolver;
   // 'total' de que está cerrada.
   return devuelto >= sale.cantidad ? 'total' : 'parcial';
+}
+
+// ---------------- CAMBIO DE TALLA ----------------
+// Mismo modelo, otra talla, mismo precio: no mueve dinero ni genera ticket.
+// Solo repone la talla que vuelve, descuenta la que se lleva, y deja la línea
+// de venta con la talla nueva (guardando la anterior) para que una devolución
+// o el borrado del ticket más adelante repongan el par que de verdad se
+// llevó el cliente.
+function puedeCambiarTalla(sale){
+  if(!sale || sale.productId==='__manual__') return false;
+  if(cantidadDevueltaDe(sale.id) > 0) return false;
+  return !!state.products.find(function(p){ return p.id===sale.productId; });
+}
+
+function _tallasDisponiblesParaCambio(sale, pares){
+  var p = state.products.find(function(x){ return x.id===sale.productId; });
+  if(!p) return [];
+  var necesarios = Math.max(1, pares || 1);
+  return tallasParaTipo(p.tipoArticulo||'zapatos', p.genero).filter(function(t){
+    return String(t) !== String(sale.talla) && (tallaInfo(p,t).stock||0) >= necesarios;
+  });
+}
+
+// Con 1 par solo hace falta 1 en stock; el modal ofrece las tallas con stock
+// para al menos 1 par y, al confirmar, se vuelve a comprobar con los pares
+// elegidos. Este aviso va marcando cuántos pares caben en la talla elegida.
+function actualizarMaximoCambio(saleId){
+  var sale = state.sales.find(function(s){ return s.id===saleId; });
+  var sel = document.getElementById('cambio-talla-nueva');
+  var inp = document.getElementById('cambio-cantidad');
+  var txt = document.getElementById('cambio-max-txt');
+  if(!sale || !sel || !inp || inp.type==='hidden') return;
+  var p = state.products.find(function(x){ return x.id===sale.productId; });
+  var enStock = p ? (tallaInfo(p, sel.value).stock||0) : 0;
+  var tope = Math.max(1, Math.min(sale.cantidad, enStock));
+  inp.max = tope;
+  if(parseInt(inp.value) > tope) inp.value = tope;
+  if(txt) txt.textContent = sale.cantidad + (tope < sale.cantidad ? ' · en esa talla caben ' + tope : '');
+}
+
+function htmlTallaVenta(s){
+  if(s.tallaOriginal !== undefined && String(s.tallaOriginal) !== String(s.talla)){
+    return escapeHtml(String(s.talla)) + '<div style="font-size:10.5px;color:var(--ink-dim);font-weight:400;" title="Cambio de talla">(antes '+escapeHtml(String(s.tallaOriginal))+')</div>';
+  }
+  return escapeHtml(String(s.talla));
+}
+
+function openCambioTallaModal(saleId){
+  var sale = state.sales.find(function(s){ return s.id===saleId; });
+  if(!sale) return;
+  var p = state.products.find(function(x){ return x.id===sale.productId; });
+  if(!p){ showToast('No se encuentra el artículo en el almacén.', 'err', false); return; }
+  var tallas = _tallasDisponiblesParaCambio(sale);
+  if(!tallas.length){ showToast('No hay otra talla de este modelo con stock suficiente.', 'err', false); return; }
+  var ticket = state.tickets.find(function(t){ return t.id===sale.ticketId; });
+  var opciones = tallas.map(function(t){
+    return '<option value="'+escapeAttr(String(t))+'">Talla '+escapeHtml(String(t))+' — '+(tallaInfo(p,t).stock||0)+' en stock</option>';
+  }).join('');
+  document.getElementById("modal-root").innerHTML =
+    '<div class="modal-overlay" onclick="if(event.target===this) closeModal()">'
+    + '<div class="modal" style="max-width:440px;">'
+    +   '<h3 style="margin-top:0;">🔄 Cambio de talla</h3>'
+    +   '<div class="note" style="margin-bottom:14px;">'
+    +     escapeHtml(sale.marca)+' '+escapeHtml(sale.modelo)+'<br>'
+    +     'Ticket '+escapeHtml(ticket ? ticket.numSerieFactura : '—')+' · talla actual <b>'+escapeHtml(String(sale.talla))+'</b>'
+    +     (sale.cantidad>1 ? ' · esta línea tiene <b>'+sale.cantidad+'</b> pares' : '')
+    +   '</div>'
+    +   '<div class="field-row">'
+    +     '<div class="field"><label>Nueva talla</label>'
+    +       '<select id="cambio-talla-nueva" style="width:100%" onchange="actualizarMaximoCambio(\''+saleId+'\')">'+opciones+'</select></div>'
+    +     (sale.cantidad>1
+          ? '<div class="field"><label>Pares a cambiar (de <span id="cambio-max-txt">'+sale.cantidad+'</span>)</label>'
+          +   '<input type="number" id="cambio-cantidad" min="1" max="'+sale.cantidad+'" value="'+sale.cantidad+'" style="width:100%"></div>'
+          : '<input type="hidden" id="cambio-cantidad" value="1">')
+    +   '</div>'
+    +   '<div class="note" style="font-size:12px;">Mismo modelo y mismo precio: no se cobra ni se devuelve nada. Se repone al stock la talla actual y se descuenta la nueva.'
+    +     (sale.cantidad>1 ? ' Si cambias solo parte de los pares, la línea se divide en dos y el ticket sigue sumando lo mismo.' : '')+'</div>'
+    +   '<div class="modal-actions">'
+    +     '<button class="btn secondary" onclick="closeModal()">Cancelar</button>'
+    +     '<button class="btn accent" onclick="confirmarCambioTalla(\''+saleId+'\')">Confirmar cambio</button>'
+    +   '</div>'
+    + '</div></div>';
+}
+
+function confirmarCambioTalla(saleId){
+  var sale = state.sales.find(function(s){ return s.id===saleId; });
+  var sel = document.getElementById('cambio-talla-nueva');
+  var inp = document.getElementById('cambio-cantidad');
+  if(!sale || !sel || !sel.value) return;
+  var p = state.products.find(function(x){ return x.id===sale.productId; });
+  if(!p) return;
+  var nueva = sel.value;
+  var antigua = String(sale.talla);
+  var n = Math.max(1, Math.min(parseInt(inp && inp.value) || 1, sale.cantidad));
+  // Se vuelve a comprobar el stock por si cambió mientras estaba abierto el aviso
+  if((tallaInfo(p, nueva).stock||0) < n){ showToast('En la talla '+nueva+' solo quedan '+(tallaInfo(p, nueva).stock||0)+' par(es).', 'err', false); return; }
+
+  if(!p.tallas[antigua]) p.tallas[antigua] = {stock:0, barcode:""};
+  if(!p.tallas[nueva])   p.tallas[nueva]   = {stock:0, barcode:""};
+  p.tallas[antigua].stock = (tallaInfo(p, antigua).stock||0) + n;
+  p.tallas[nueva].stock   = (tallaInfo(p, nueva).stock||0) - n;
+  p._mod = Date.now();   // sin esto la fusión con otro equipo descartaría el movimiento de stock
+
+  var tallaNuevaTipada = (typeof sale.talla === 'number' && !isNaN(Number(nueva))) ? Number(nueva) : nueva;
+  var ahora = Date.now();
+
+  if(n >= sale.cantidad){
+    // Se cambian todos los pares: la propia línea pasa a la talla nueva
+    sale.tallaOriginal = sale.talla;
+    sale.talla = tallaNuevaTipada;
+    sale._cambiadaEn = ahora;
+  } else {
+    // Se cambian solo algunos: la línea se divide en dos y los importes se
+    // reparten en proporción, de modo que la suma del ticket no varía
+    var r = n / sale.cantidad;
+    var porPares = ['subtotal','iva','total','beneficio','descManualImporte','descuentoPuntualLinea'];
+    var movida = Object.assign({}, sale);
+    movida.id = uid();
+    movida.cantidad = n;
+    movida.talla = tallaNuevaTipada;
+    movida.tallaOriginal = sale.talla;
+    movida._cambiadaEn = ahora;
+    porPares.forEach(function(k){
+      if(typeof sale[k] === 'number'){
+        movida[k] = sale[k] * r;
+        sale[k]   = sale[k] - movida[k];     // el resto, para que sume exactamente lo mismo
+      }
+    });
+    // Un descuento fijo en € es del total de la línea: se reparte igual
+    if(sale.descManualActivo && sale.descManualTipo === 'importe' && typeof sale.descManualValor === 'number'){
+      movida.descManualValor = sale.descManualValor * r;
+      sale.descManualValor   = sale.descManualValor - movida.descManualValor;
+    }
+    sale.cantidad = sale.cantidad - n;
+    sale._cambiadaEn = ahora;
+    state.sales.push(movida);
+  }
+
+  if(!state.cambios) state.cambios = [];
+  state.cambios.push({
+    id: uid(), fecha: new Date(ahora).toISOString(), saleId: sale.id, ticketId: sale.ticketId,
+    productId: sale.productId, marca: sale.marca, modelo: sale.modelo,
+    tallaAnterior: antigua, tallaNueva: String(nueva), cantidad: n
+  });
+
+  saveState();
+  subirTicket(sale.ticketId);   // las líneas cambiadas viajan con su ticket al resto de equipos
+  closeModal();
+
+  // Solo se repinta el historial de ventas y el listado de cambios, no la pestaña entera
+  if(document.getElementById('historial-tbody')) actualizarHistorialVentas();
+  var cont = document.getElementById('cambios-talla-wrap');
+  if(cont) cont.outerHTML = htmlListadoCambios();
+  showToast('Cambio registrado: '+n+(n===1?' par':' pares')+', talla '+antigua+' → '+nueva+' ✓', 'ok');
+}
+
+function htmlListadoCambios(){
+  var lista = state.cambios || [];
+  if(!lista.length) return '<div id="cambios-talla-wrap"></div>';
+  var filas = [].concat(lista).sort(function(a,b){ return String(b.fecha).localeCompare(String(a.fecha)); }).map(function(c){
+    var t = state.tickets.find(function(x){ return x.id===c.ticketId; });
+    return '<tr>'
+      + '<td>'+new Date(c.fecha).toLocaleString('es-ES')+'</td>'
+      + '<td>'+escapeHtml(c.marca||'')+' '+escapeHtml(c.modelo||'')+'</td>'
+      + '<td class="num">'+escapeHtml(String(c.tallaAnterior))+' → <b>'+escapeHtml(String(c.tallaNueva))+'</b></td>'
+      + '<td class="num">'+c.cantidad+'</td>'
+      + '<td style="font-family:var(--font-mono);font-size:12.5px;">'+(t ? escapeHtml(t.numSerieFactura) : '<span style="color:var(--red);">no encontrado</span>')+'</td>'
+      + '</tr>';
+  }).join('');
+  return '<div id="cambios-talla-wrap">'
+    + '<h4 class="sub-title" style="margin-top:18px;font-size:14px;">Cambios de talla</h4>'
+    + '<div style="max-height:260px;overflow:auto;-webkit-overflow-scrolling:touch;border-radius:var(--radius-sm);box-shadow:var(--shadow);">'
+    + '<table style="box-shadow:none;border-radius:0;font-size:14px;">'
+    + '<thead style="position:sticky;top:0;z-index:2;"><tr><th>Fecha</th><th>Artículo</th><th class="num">Talla</th><th class="num">Pares</th><th>Ticket origen</th></tr></thead>'
+    + '<tbody>'+filas+'</tbody></table></div></div>';
 }
 
 async function registerDevolucion(sale, cantidad, motivo, reponerStock){
