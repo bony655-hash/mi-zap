@@ -424,7 +424,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-const APP_VERSION = "12.31";
+const APP_VERSION = "12.33";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -5655,6 +5655,7 @@ var EXPO_POR_HOJA = 21;
 var expoSeleccion = {};
 var expoFiltro = '';
 var expoSoloPromo = false;
+var expoPrevId = null;   // modelo que enseña la vista previa: el último que se ha tocado
 
 function _expoPrecios(p){
   var pvp = precioConIVA(precioBaseConPromo(p));
@@ -5669,12 +5670,19 @@ function _expoPrecios(p){
 function tarjetaExpoHTML(p, conFondo){
   var pr = _expoPrecios(p);
   var tienda = String(state.settings.nombreTienda || 'Mil Pasos').toUpperCase();
+  var marca = String(p.marca || '');
   var modelo = String(p.modelo || '');
+  // El modelo se puede ocultar (algunos nombres no son presentables). Sin
+  // marca no habría nada con que titular la tarjeta: ahí siempre se enseña.
+  var verModelo = !(p.expoSinModelo === true && marca);
   var largo = modelo.length;
   var tamModelo = largo <= 16 ? 4.76 : (largo <= 26 ? 3.7 : 3.0);
   var lineasModelo = largo <= 16 ? 1 : 2;
+  // Sin modelo, la marca hace de título: más grande
+  var tamMarca = verModelo ? 2.51 : (marca.length <= 14 ? 4.2 : (marca.length <= 20 ? 3.3 : 2.6));
+  var espaciado = verModelo ? '.18em' : '.12em';
   var txt = eurSinDivisa(pr.pvp);
-  var tamPrecio = pr.promo ? (txt.length <= 5 ? 10.6 : 8.4) : (txt.length <= 6 ? 11.64 : 9.2);
+  var tamPrecio = pr.promo ? (txt.length <= 5 ? 10.6 : (txt.length <= 6 ? 8.4 : 6.6)) : (txt.length <= 6 ? 11.64 : 9.2);
   var tamEuro = Math.round(tamPrecio * 0.545 * 100) / 100;
 
   var bloquePrecio = '<div style="display:flex;align-items:baseline;white-space:nowrap;">'
@@ -5683,7 +5691,7 @@ function tarjetaExpoHTML(p, conFondo){
   if(pr.promo){
     bloquePrecio = '<div style="display:flex;align-items:flex-end;gap:2.2mm;">' + bloquePrecio
       + '<div style="display:flex;flex-direction:column;align-items:flex-start;gap:.7mm;padding-bottom:.5mm;">'
-      +   '<span style="font-size:2.25mm;font-weight:700;background:#0C2620;color:#AEFFDF;padding:.26mm 1.3mm;border-radius:9mm;">-'+pr.pct+'%</span>'
+      +   '<span style="font-size:5.6mm;font-weight:800;line-height:1.1;background:#0C2620;color:#AEFFDF;padding:.7mm 2mm;border-radius:1.4mm;white-space:nowrap;">-'+pr.pct+'%</span>'
       +   '<span style="font-size:2.9mm;font-weight:500;text-decoration:line-through;white-space:nowrap;">'+eurSinDivisa(pr.original)+' €</span>'
       + '</div></div>';
   }
@@ -5691,9 +5699,11 @@ function tarjetaExpoHTML(p, conFondo){
   return '<div style="width:60mm;height:40mm;box-sizing:border-box;padding:3.4mm 3.7mm 2.9mm 3.7mm;'
     + 'display:flex;flex-direction:column;overflow:hidden;color:#0C2620;font-family:Arial,Helvetica,sans-serif;'
     + (conFondo ? 'background:#AEFFDF;' : '') + '">'
-    +   '<div style="font-size:2.51mm;font-weight:700;letter-spacing:.18em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+escapeHtml(p.marca||'')+'</div>'
+    +   '<div style="font-size:'+tamMarca+'mm;font-weight:700;letter-spacing:'+espaciado+';text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+escapeHtml(marca)+'</div>'
     +   '<div style="width:4.76mm;height:.46mm;background:#239886;margin-top:1.3mm;flex:none;"></div>'
-    +   '<div style="font-size:'+tamModelo+'mm;font-weight:700;line-height:1.05;margin-top:1.4mm;letter-spacing:-.01em;overflow:hidden;max-height:'+(tamModelo*1.05*lineasModelo+0.2)+'mm;">'+escapeHtml(modelo)+'</div>'
+    +   (verModelo
+          ? '<div style="font-size:'+tamModelo+'mm;font-weight:700;line-height:1.05;margin-top:1.4mm;letter-spacing:-.01em;overflow:hidden;max-height:'+(tamModelo*1.05*lineasModelo+0.2)+'mm;">'+escapeHtml(modelo)+'</div>'
+          : '')
     +   '<div style="margin-top:auto;">'+bloquePrecio+'</div>'
     +   '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:.9mm;font-size:1.98mm;">'
     +     '<span style="font-weight:500;">IVA incluido</span>'
@@ -5717,17 +5727,23 @@ function _expoFilasHTML(){
   if(!lista.length) return '<div style="padding:16px;text-align:center;color:var(--ink-dim);">Ningún modelo coincide.</div>';
   return lista.map(function(p){
     var pr = _expoPrecios(p);
-    return '<label style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-bottom:1px solid var(--line);cursor:pointer;text-transform:none;margin:0;">'
-      + '<input type="checkbox" '+(expoSeleccion[p.id]?'checked':'')+' onchange="expoMarcar(\''+p.id+'\', this.checked)" style="width:auto;">'
-      + '<span style="flex:1;font-size:13.5px;"><b>'+escapeHtml(p.marca||'')+'</b> '+escapeHtml(p.modelo||'')+'</span>'
+    var verModelo = p.expoSinModelo !== true;
+    return '<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-bottom:1px solid var(--line);">'
+      + '<label style="flex:1;display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;margin:0;min-width:0;">'
+      +   '<input type="checkbox" '+(expoSeleccion[p.id]?'checked':'')+' onchange="expoMarcar(\''+p.id+'\', this.checked)" style="width:auto;">'
+      +   '<span style="font-size:13.5px;"><b>'+escapeHtml(p.marca||'')+'</b> <span style="'+(verModelo?'':'color:var(--ink-dim);text-decoration:line-through;')+'">'+escapeHtml(p.modelo||'')+'</span></span>'
+      + '</label>'
       + (pr.promo ? '<span style="font-size:11px;font-weight:700;background:var(--teal-light);color:var(--teal);padding:2px 8px;border-radius:99px;">-'+pr.pct+'%</span>' : '')
       + '<span style="font-size:13px;font-variant-numeric:tabular-nums;min-width:64px;text-align:right;">'+eur(pr.pvp)+'</span>'
-      + '</label>';
+      + '<label title="Mostrar el nombre del modelo en la tarjeta" style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--ink-dim);text-transform:none;margin:0;cursor:pointer;white-space:nowrap;">'
+      +   '<input type="checkbox" '+(verModelo?'checked':'')+' onchange="expoAlternarModelo(\''+p.id+'\', this.checked)" style="width:auto;"> modelo'
+      + '</label>'
+      + '</div>';
   }).join('');
 }
 
 function openExpoModal(){
-  expoSeleccion = {}; expoFiltro = ''; expoSoloPromo = false;
+  expoSeleccion = {}; expoFiltro = ''; expoSoloPromo = false; expoPrevId = null;
   document.getElementById("modal-root").innerHTML =
     '<div class="modal-overlay" onclick="if(event.target===this) closeModal()">'
     + '<div class="modal" style="max-width:660px;">'
@@ -5740,6 +5756,8 @@ function openExpoModal(){
     +   '<div class="toolbar" style="margin:8px 0;">'
     +     '<button class="btn small secondary" onclick="expoMarcarVisibles(true)">Marcar los visibles</button>'
     +     '<button class="btn small secondary" onclick="expoMarcarVisibles(false)">Quitar los visibles</button>'
+    +     '<button class="btn small secondary" onclick="expoModeloVisibles(false)" title="La tarjeta lleva solo la marca y el precio">Ocultar el modelo en los visibles</button>'
+    +     '<button class="btn small secondary" onclick="expoModeloVisibles(true)">Mostrar el modelo en los visibles</button>'
     +   '</div>'
     +   '<div id="expo-lista" style="max-height:260px;overflow:auto;-webkit-overflow-scrolling:touch;border-radius:var(--radius-sm);box-shadow:var(--shadow);">'+_expoFilasHTML()+'</div>'
     +   '<div style="display:flex;gap:16px;align-items:center;margin-top:14px;flex-wrap:wrap;">'
@@ -5774,6 +5792,38 @@ function expoAlternarPromo(v){
 }
 function expoMarcar(id, marcado){
   if(marcado) expoSeleccion[id] = true; else delete expoSeleccion[id];
+  expoPrevId = id;
+  actualizarResumenExpo();
+}
+
+// El modelo se muestra u oculta POR MODELO y queda guardado en su ficha: no
+// hay que volver a decidirlo en cada impresión. Va con _mod para que se
+// sincronice con el resto de equipos.
+function expoAlternarModelo(id, mostrar){
+  var p = state.products.find(function(x){ return x.id===id; });
+  if(!p) return;
+  if(mostrar) delete p.expoSinModelo; else p.expoSinModelo = true;
+  p._mod = Date.now();
+  saveState();
+  expoPrevId = id;
+  var fila = document.querySelector('#expo-lista input[onchange*="expoAlternarModelo(\''+id+'\'"]');
+  if(fila){
+    var nombre = fila.closest('div').querySelector('label span span');
+    if(nombre) nombre.style.cssText = mostrar ? '' : 'color:var(--ink-dim);text-decoration:line-through;';
+  }
+  actualizarResumenExpo();
+}
+
+function expoModeloVisibles(mostrar){
+  var cont = document.getElementById('expo-lista');
+  var antes = cont ? cont.scrollTop : 0;
+  var ahora = Date.now();
+  _expoProductos().forEach(function(p){
+    if(mostrar) delete p.expoSinModelo; else p.expoSinModelo = true;
+    p._mod = ahora;
+  });
+  saveState();
+  if(cont){ cont.innerHTML = _expoFilasHTML(); cont.scrollTop = antes; }
   actualizarResumenExpo();
 }
 function expoMarcarVisibles(marcar){
@@ -5799,8 +5849,8 @@ function actualizarResumenExpo(){
   var prev = document.getElementById('expo-preview');
   if(prev){
     var visibles = _expoProductos();
-    var modelo = null;
-    for(var i=0;i<visibles.length;i++){ if(expoSeleccion[visibles[i].id]){ modelo = visibles[i]; break; } }
+    var modelo = expoPrevId ? state.products.find(function(x){ return x.id===expoPrevId; }) : null;
+    if(!modelo){ for(var i=0;i<visibles.length;i++){ if(expoSeleccion[visibles[i].id]){ modelo = visibles[i]; break; } } }
     if(!modelo) modelo = visibles[0] || state.products[0];
     prev.innerHTML = modelo
       ? '<div style="width:96mm;height:64mm;background:#AEFFDF;box-shadow:var(--shadow);"><div style="transform:scale(1.6);transform-origin:top left;width:60mm;height:40mm;">'+tarjetaExpoHTML(modelo, false)+'</div></div>'
