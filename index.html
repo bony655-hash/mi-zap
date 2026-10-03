@@ -439,7 +439,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script>
-const APP_VERSION = "12.39";
+const APP_VERSION = "12.40";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -1225,7 +1225,7 @@ function revisarOcupacion(){
 }
 
 function guardarEnFirebase(){
-  if(!fbRef) return;
+  if(!fbRef || !state) return;
   if(_guardandoEnFb) return;
   // Red de seguridad: nunca subir un almacén vacío por encima de una nube
   // que sí tenía productos, salvo que el usuario haya pedido expresamente
@@ -1582,6 +1582,9 @@ async function loadState(){
 }
 
 function saveState(){
+  // Sin datos cargados (pantalla de acceso) no se guarda nada: JSON.stringify(null)
+  // escribiría "null" encima de los datos del equipo.
+  if(!state) return;
   // Guardar siempre en localStorage (con fotos, funciona offline)
   const ok = storage.set(STORAGE_KEY, JSON.stringify(state));
   if(!ok) showToast("⚠️ No se pudo guardar localmente.", "err");
@@ -1820,6 +1823,9 @@ var MINUTOS_SILENCIO_BORRADO = 15;
 var _avisosSilenciados = {};
 
 function registrarAviso(msg, type){
+  // Antes de iniciar sesión todavía no hay datos cargados (state es null): se
+  // muestra el aviso sin apuntarlo en el historial.
+  if(!state) return { mostrar: true };
   if(!state.avisos) state.avisos = [];
   var texto = String(msg);
 
@@ -8104,6 +8110,7 @@ document.addEventListener('focusout', function(e){
   var CAMPO_POR_PESTAÑA = { ventas: 'scan-ventas', almacen: 'scan-almacen' };
 
   document.addEventListener('keydown', function(e){
+    if(!state){ buffer = ''; return; }   // pantalla de acceso: sin datos, no hay nada que escanear
     var campoPropio = CAMPO_POR_PESTAÑA[currentTab];
     if(!campoPropio) { buffer = ''; return; }   // en Informes/Ajustes no hay nada que escanear
 
