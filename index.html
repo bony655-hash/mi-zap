@@ -439,7 +439,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script>
-const APP_VERSION = "12.40";
+const APP_VERSION = "12.41";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -8111,6 +8111,11 @@ document.addEventListener('focusout', function(e){
 
   document.addEventListener('keydown', function(e){
     if(!state){ buffer = ''; return; }   // pantalla de acceso: sin datos, no hay nada que escanear
+    // Algunos navegadores, autorrellenos y gestores de contraseñas lanzan eventos de
+    // teclado SIN la propiedad key. Un lector de códigos siempre la trae: se ignoran.
+    // Antes, e.key.length fallaba con "Cannot read properties of undefined" y la
+    // app mostraba la pantalla de error.
+    if(typeof e.key !== 'string'){ return; }
     var campoPropio = CAMPO_POR_PESTAÑA[currentTab];
     if(!campoPropio) { buffer = ''; return; }   // en Informes/Ajustes no hay nada que escanear
 
