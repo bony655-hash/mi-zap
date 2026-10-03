@@ -418,13 +418,28 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
   </main>
 </div>
 <div id="modal-root"></div>
+<div id="acceso-overlay" style="position:fixed;inset:0;z-index:300;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:20px;overflow:auto;">
+  <div id="acceso-comprobando" style="color:#fff;font-size:15px;text-align:center;">Comprobando acceso…</div>
+  <form id="acceso-form" onsubmit="iniciarSesion(); return false;" style="display:none;background:#fff;border-radius:14px;box-shadow:0 20px 50px rgba(0,0,0,.4);padding:28px 26px;width:100%;max-width:380px;box-sizing:border-box;">
+    <div style="font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-dim);text-align:center;">Acceso restringido</div>
+    <h2 id="acceso-titulo" style="margin:6px 0 18px;text-align:center;font-size:22px;">Mil Pasos</h2>
+    <div class="field"><label>Correo</label>
+      <input id="acceso-email" type="email" autocomplete="username" autocapitalize="none" spellcheck="false" style="width:100%;box-sizing:border-box;"></div>
+    <div class="field"><label>Contraseña</label>
+      <input id="acceso-pass" type="password" autocomplete="current-password" style="width:100%;box-sizing:border-box;"></div>
+    <div id="acceso-error" style="color:var(--red);font-size:13px;min-height:18px;margin:4px 0 10px;"></div>
+    <button id="acceso-boton" type="submit" class="btn accent" style="width:100%;">Entrar</button>
+    <div style="font-size:11.5px;color:var(--ink-dim);text-align:center;margin-top:14px;">Solo pueden entrar las cuentas autorizadas.</div>
+  </form>
+</div>
 <div id="toast-stack"></div>
 
 <!-- Firebase SDK (compat, funciona como script tag normal) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script>
-const APP_VERSION = "12.38";
+const APP_VERSION = "12.39";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -450,6 +465,131 @@ var _ultimoConteoRemoto = null;
 // los datos": es la ÚNICA situación en la que de verdad se quiere subir un
 // almacén vacío por encima de lo que hubiera en la nube.
 var _borradoIntencional = false;
+
+// ============ ACCESO RESTRINGIDO (Firebase Authentication) ============
+// Sin sesión iniciada no se carga ningún dato y la pantalla de acceso lo
+// tapa todo. La protección REAL de los datos son las reglas de Firestore (solo
+// dejan pasar a las cuentas autorizadas); esta pantalla es la parte visible.
+var _usuarioActual = null;
+
+function recargarApp(){ location.reload(); }
+
+function _ocultarAcceso(){
+  var o = document.getElementById('acceso-overlay');
+  if(o) o.style.display = 'none';
+}
+
+function mostrarFormularioAcceso(){
+  var o = document.getElementById('acceso-overlay');
+  if(o) o.style.display = 'flex';
+  var c = document.getElementById('acceso-comprobando');
+  var f = document.getElementById('acceso-form');
+  if(c) c.style.display = 'none';
+  if(f) f.style.display = 'block';
+  var e = document.getElementById('acceso-email');
+  if(e && !e.value){ try{ e.focus(); }catch(x){} }
+}
+
+// Espera a saber si hay sesión. Devuelve una promesa que solo se cumple cuando
+// se puede arrancar la app: con sesión iniciada, o sin forma de comprobarla
+// (sin conexión al arrancar y sin el módulo cargado), para no dejar la tienda
+// sin poder vender si falla internet.
+function esperarAcceso(){
+  return new Promise(function(resolver){
+    var auth = null;
+    try{
+      if(typeof firebase !== 'undefined' && typeof firebase.auth === 'function' && fbApp) auth = firebase.auth();
+    }catch(e){ auth = null; }
+    if(!auth){ _ocultarAcceso(); resolver(null); return; }
+
+    var arrancada = false;
+    // Si tarda más de lo normal, se enseña ya el formulario en vez de dejar
+    // la pantalla en "comprobando"
+    var temporizador = setTimeout(function(){ if(!arrancada) mostrarFormularioAcceso(); }, 6000);
+    auth.onAuthStateChanged(function(usuario){
+      clearTimeout(temporizador);
+      if(usuario){
+        _usuarioActual = usuario;
+        _ocultarAcceso();
+        if(!arrancada){ arrancada = true; resolver(usuario); }
+      } else {
+        _usuarioActual = null;
+        if(arrancada){ recargarApp(); return; }   // sesión cerrada o anulada con la app ya en marcha
+        mostrarFormularioAcceso();
+      }
+    });
+  });
+}
+
+function _mensajeErrorAcceso(err){
+  var c = (err && err.code) || '';
+  if(c==='auth/invalid-credential' || c==='auth/wrong-password' || c==='auth/user-not-found' || c==='auth/invalid-login-credentials') return 'Correo o contraseña incorrectos.';
+  if(c==='auth/invalid-email') return 'El correo no es válido.';
+  if(c==='auth/too-many-requests') return 'Demasiados intentos. Espera unos minutos y vuelve a probar.';
+  if(c==='auth/network-request-failed') return 'Sin conexión. Comprueba internet para iniciar sesión.';
+  if(c==='auth/user-disabled') return 'Esta cuenta está desactivada.';
+  if(c==='auth/operation-not-allowed') return 'El acceso con correo y contraseña no está activado en Firebase.';
+  if(c==='auth/unauthorized-domain') return 'Esta dirección web no está autorizada en Firebase (Authentication → Configuración → Dominios autorizados).';
+  return 'No se pudo iniciar sesión' + (c ? ' ('+c+')' : '') + '.';
+}
+
+function iniciarSesion(){
+  var email = (document.getElementById('acceso-email').value || '').trim();
+  var pass  = document.getElementById('acceso-pass').value || '';
+  var err   = document.getElementById('acceso-error');
+  var boton = document.getElementById('acceso-boton');
+  if(!email || !pass){ err.textContent = 'Escribe el correo y la contraseña.'; return; }
+  err.textContent = '';
+  boton.disabled = true; boton.textContent = 'Entrando…';
+  firebase.auth().signInWithEmailAndPassword(email, pass).then(function(){
+    // El resto lo hace onAuthStateChanged: oculta la pantalla y arranca la app
+    document.getElementById('acceso-pass').value = '';
+  }).catch(function(e){
+    err.textContent = _mensajeErrorAcceso(e);
+    boton.disabled = false; boton.textContent = 'Entrar';
+  });
+}
+
+function cerrarSesion(){
+  document.getElementById("modal-root").innerHTML =
+    '<div class="modal-overlay" onclick="if(event.target===this) closeModal()">'
+    + '<div class="modal" style="max-width:400px;">'
+    +   '<h3 style="margin-top:0;">Cerrar sesión</h3>'
+    +   '<p>¿Cerrar la sesión de <b>'+escapeHtml((_usuarioActual && _usuarioActual.email) || 'este equipo')+'</b>?</p>'
+    +   '<p style="font-size:13px;color:var(--ink-dim);">No se borra ningún dato. Para volver a entrar necesitarás el correo y la contraseña, y conexión a internet.</p>'
+    +   '<div class="modal-actions" style="justify-content:center;gap:12px;">'
+    +     '<button class="btn secondary" onclick="closeModal()">Cancelar</button>'
+    +     '<button class="btn danger" onclick="confirmarCerrarSesion()">Cerrar sesión</button>'
+    +   '</div>'
+    + '</div></div>';
+}
+function confirmarCerrarSesion(){
+  closeModal();
+  try{ firebase.auth().signOut(); }catch(e){ recargarApp(); }
+}
+
+// Tarjeta de Ajustes con la cuenta con la que se ha entrado
+function htmlCuentaAjustes(){
+  if(!_usuarioActual) return '';
+  return '<div class="ticket" style="margin-bottom:16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">'
+    + '<div style="flex:1;min-width:200px;"><div style="font-size:12px;color:var(--ink-dim);">👤 Sesión iniciada como</div>'
+    + '<div style="font-weight:700;word-break:break-all;">'+escapeHtml(_usuarioActual.email || '')+'</div></div>'
+    + '<button class="btn secondary" onclick="cerrarSesion()">Cerrar sesión</button></div>';
+}
+
+// Si Firebase rechaza una operación por permisos, se avisa con claridad (una
+// vez por minuto como mucho) en vez de dejar que los cambios se queden solo
+// en este equipo sin que nadie se entere.
+var _ultimoAvisoPermiso = 0;
+function avisarErrorFirebase(err){
+  var c = (err && err.code) || '';
+  if(c !== 'permission-denied' && c !== 'unauthenticated') return false;
+  var ahora = Date.now();
+  if(ahora - _ultimoAvisoPermiso < 60000) return true;
+  _ultimoAvisoPermiso = ahora;
+  showToast('🔒 Firebase ha rechazado la operación: esta cuenta no tiene permiso para guardar en la nube. Los cambios se quedan solo en este equipo.', 'err', true);
+  return true;
+}
 
 function iniciarFirebase(){
   try{
@@ -763,6 +903,7 @@ function subirTicket(ticketId){
   var lineas = (state.sales||[]).filter(function(s){ return s.ticketId===ticketId; });
   return fbTickets.doc(ticketId).set(_docDeTicket(t, lineas)).catch(function(err){
     console.error('No se pudo subir el ticket '+ticketId+':', err);
+    avisarErrorFirebase(err);
   });
 }
 
@@ -912,6 +1053,7 @@ function iniciarEscuchaTickets(){
       }
     }, function(err){
       console.error('Error escuchando tickets:', err);
+      avisarErrorFirebase(err);
       fbTicketsEscuchando = false;
     });
 }
@@ -1124,7 +1266,7 @@ function guardarEnFirebase(){
       _guardandoEnFb = false;
       console.error('Error guardando en Firebase:', err);
       mostrarEstadoSync('err');
-      showToast('⚠️ Error al sincronizar: '+err.message, 'err');
+      if(!avisarErrorFirebase(err)) showToast('⚠️ Error al sincronizar: '+err.message, 'err');
     });
   }catch(e){
     if(_timerSync) clearTimeout(_timerSync);
@@ -1191,6 +1333,7 @@ function iniciarEscuchaFirebase(){
     }catch(e){ console.error('Error procesando datos de Firebase:', e); }
   }, function(err){
     console.error('Error en listener Firebase:', err);
+    avisarErrorFirebase(err);
     mostrarEstadoSync('err');
     showToast('Error de sincronización: '+err.message, 'err');
   });
@@ -1362,7 +1505,7 @@ async function loadState(){
           }
         }
       }
-    }catch(e){ console.log('Firebase no disponible al arrancar, usando datos locales:', e.message); }
+    }catch(e){ console.log('Firebase no disponible al arrancar, usando datos locales:', e.message); avisarErrorFirebase(e); }
   }
   if(!state.avisos) state.avisos = [];
   if(!state.settings || !state.settings.contadoresSerie){ if(state.settings) state.settings.contadoresSerie = {}; }
@@ -3180,6 +3323,7 @@ function renderBiblioteca(){
 function renderAjustes(){
   return `
     <h2 class="section-title">Ajustes</h2>
+    ${htmlCuentaAjustes()}
     <div class="panel-duo">${renderImpresoraTermica()}${renderAvisos()}</div>
     <div class="panel-duo">
       <div>
@@ -8009,7 +8153,7 @@ document.addEventListener('focusout', function(e){
 })();
 
 iniciarFirebase();
-loadState().then(function(){
+esperarAcceso().then(function(){ return loadState(); }).then(function(){
   // Aviso de actualización. Se compara con la última versión que se ejecutó
   // en ESTE dispositivo, guardada en localStorage. Así funciona sea quien sea
   // quien haya provocado la recarga: la comprobación de versión, el Service
