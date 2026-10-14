@@ -439,7 +439,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;borde
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script>
-const APP_VERSION = "12.41";
+const APP_VERSION = "12.43";
 const STORAGE_KEY = "zapateria-data-v2";
 
 // ---- FIREBASE: sincronización entre dispositivos ----
@@ -743,6 +743,11 @@ function fusionarEstados(local, remoto){
       if(!resultado.borrados[id] || b[id] > resultado.borrados[id]) resultado.borrados[id] = b[id];
     });
   });
+  // Devoluciones y cambios de talla borrados a propósito no vuelven, ni siquiera si el
+  // otro equipo todavía los tiene. Los registros nunca se editan después de crearse,
+  // así que no hay "se editó después de borrarlo": una marca basta.
+  resultado.devoluciones = resultado.devoluciones.filter(function(d){ return !resultado.borrados[d.id]; });
+  resultado.cambios = (resultado.cambios||[]).filter(function(c){ return !resultado.borrados[c.id]; });
   resultado.products = resultado.products.filter(function(p){
     var borradoEn = resultado.borrados[p.id];
     if(!borradoEn) return true;
@@ -1224,9 +1229,20 @@ function revisarOcupacion(){
   }
 }
 
+// Había algo por subir mientras otra subida estaba en curso. Antes ese guardado
+// simplemente se descartaba: el cambio no llegaba a la nube hasta el siguiente
+// guardado, que podía tardar mucho (y con una conexión lenta la ventana dura
+// varios segundos).
+var _guardadoPendiente = false;
+function _repetirGuardadoPendiente(){
+  if(!_guardadoPendiente) return;
+  _guardadoPendiente = false;
+  guardarEnFirebase();
+}
+
 function guardarEnFirebase(){
   if(!fbRef || !state) return;
-  if(_guardandoEnFb) return;
+  if(_guardandoEnFb){ _guardadoPendiente = true; return; }
   // Red de seguridad: nunca subir un almacén vacío por encima de una nube
   // que sí tenía productos, salvo que el usuario haya pedido expresamente
   // borrarlo todo. Sin esto, cualquier fallo que deje el estado local
@@ -1261,6 +1277,7 @@ function guardarEnFirebase(){
       if(_timerSync) clearTimeout(_timerSync);
       _guardandoEnFb = false;
       mostrarEstadoSync('ok');
+      _repetirGuardadoPendiente();   // si llegaron cambios durante la subida, se sube ya la versión actual
     }).catch(function(err){
       if(_timerSync) clearTimeout(_timerSync);
       _guardandoEnFb = false;
@@ -4852,6 +4869,8 @@ function confirmarEliminarTicketsSeleccionados(){
     });
     // Igual que en el borrado individual: no reponer dos veces lo ya repuesto por devoluciones
     state.devoluciones.filter(d=>d.ticketId===ticketId).forEach(_deshacerReponerStock);
+    state.devoluciones.filter(d=>d.ticketId===ticketId).forEach(function(d){ marcarBorrado(d.id); });
+    (state.cambios||[]).filter(c=>c.ticketId===ticketId).forEach(function(c){ marcarBorrado(c.id); });
     state.sales = state.sales.filter(s=>s.ticketId!==ticketId);
     state.devoluciones = state.devoluciones.filter(d=>d.ticketId!==ticketId);
     state.cambios = (state.cambios||[]).filter(c=>c.ticketId!==ticketId);
@@ -4915,6 +4934,16 @@ function _actualizarSeleccionDevoluciones(){
 // o garantía, si es que se marcó "reponer stock" en su momento. Borrar el
 // registro significa decir que esa devolución nunca ocurrió, así que el
 // stock que añadió también se retira.
+// Marca de borrado: al fusionar con otro equipo que todavía tiene ese registro,
+// sin ella volvería a aparecer (la fusión suma lo que tiene cada lado). Antes
+// solo los productos la dejaban; las devoluciones y los cambios de talla
+// borrados reaparecían cada vez que un equipo se actualizaba.
+function marcarBorrado(id){
+  if(!id) return;
+  if(!state.borrados) state.borrados = {};
+  state.borrados[id] = Date.now();
+}
+
 function _deshacerReponerStock(d){
   if(!d.reponerStock || !d.productId || !d.talla) return;
   var p = state.products.find(x=>x.id===d.productId);
@@ -4948,6 +4977,7 @@ function confirmarEliminarDevolucion(devId){
   const d = state.devoluciones.find(x=>x.id===devId);
   if(!d) return;
   _deshacerReponerStock(d);
+  marcarBorrado(devId);
   state.devoluciones = state.devoluciones.filter(x=>x.id!==devId);
   devolucionesSeleccionadasParaBorrar.delete(devId);
   saveState();
@@ -4986,6 +5016,7 @@ function confirmarEliminarDevolucionesSeleccionadas(){
     const d = state.devoluciones.find(x=>x.id===devId);
     if(d) _deshacerReponerStock(d);
   });
+  ids.forEach(marcarBorrado);
   state.devoluciones = state.devoluciones.filter(d=>!ids.includes(d.id));
   devolucionesSeleccionadasParaBorrar.clear();
   saveState();
@@ -5039,6 +5070,8 @@ function confirmarEliminarTicket(ticketId){
   // devolver y otra al borrar el ticket entero). El resultado neto es que
   // solo se repone lo que NO se había repuesto ya.
   state.devoluciones.filter(d=>d.ticketId===ticketId).forEach(_deshacerReponerStock);
+  state.devoluciones.filter(d=>d.ticketId===ticketId).forEach(function(d){ marcarBorrado(d.id); });
+  (state.cambios||[]).filter(c=>c.ticketId===ticketId).forEach(function(c){ marcarBorrado(c.id); });
   // Borrar ventas, devoluciones y ticket
   state.sales = state.sales.filter(s=>s.ticketId!==ticketId);
   state.devoluciones = state.devoluciones.filter(d=>d.ticketId!==ticketId);
